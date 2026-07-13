@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ürünler — TedarikPro</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<script src="../js/data.js"></script>
+<script src="../js/store.js"></script>
+<script src="../js/admin.js"></script>
+<script>
+renderShell("Ürün Yönetimi");
+
+let editId = null;
+
+function onDataChange() { draw(); }
+
+function draw() {
+  const db = Store.load();
+  const q = (document.getElementById("q")?.value || "").toLowerCase();
+  const catF = document.getElementById("catF")?.value || "";
+  const supF = document.getElementById("supF")?.value || "";
+  const cats = [...new Set(db.products.map(p => p.cat))];
+
+  const list = db.products.filter(p => {
+    if (catF && p.cat !== catF) return false;
+    if (supF && p.supplierId !== supF) return false;
+    if (q && !p.name.toLowerCase().includes(q) && !p.barcode.includes(q) && !p.sku.toLowerCase().includes(q) && !p.brand.toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  document.getElementById("content").innerHTML = `
+  <div class="filters no-print">
+    <div class="grow"><label class="lbl">Ara</label><input class="input" id="q" placeholder="Ürün adı, barkod, SKU, marka…" value="${esc(q)}" oninput="draw()"></div>
+    <div><label class="lbl">Kategori</label><select class="input" id="catF" onchange="draw()"><option value="">Tümü</option>${cats.map(c => `<option ${catF === c ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></div>
+    <div><label class="lbl">Tedarikçi</label><select class="input" id="supF" onchange="draw()"><option value="">Tümü</option>${db.suppliers.map(s => `<option value="${s.id}" ${supF === s.id ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select></div>
+    <div style="align-self:end;display:flex;gap:8px">
+      <button class="btn btn-ghost btn-sm" onclick="exportCsv()">⬇ Excel/CSV</button>
+      <button class="btn btn-primary btn-sm" onclick="openEdit(null)">+ Yeni Ürün</button>
+    </div>
+  </div>
+
+  <div class="card"><div class="tbl-wrap"><table class="tbl"><thead><tr>
+    <th>Ürün</th><th>SKU / Barkod</th><th>Kategori</th><th>Tedarikçi</th><th>Birim</th>
+    <th class="num">Son Alış</th><th class="num">Satış</th><th class="num">Stok</th><th></th>
+  </tr></thead><tbody>
+    ${list.map(p => {
+      const st = Store.totalStock(p);
+      const low = st <= p.critical;
+      return `<tr>
+        <td><b>${esc(p.name)}</b><br><span style="font-size:12px;color:var(--ink-soft)">${esc(p.brand)}</span></td>
+        <td><span style="font-size:12.5px">${esc(p.sku)}<br><span style="color:var(--ink-soft)">${esc(p.barcode)}</span></span></td>
+        <td>${esc(p.cat)}</td>
+        <td style="font-size:13px">${esc(Store.supplier(p.supplierId).name)}</td>
+        <td>${esc(p.unit)}${p.conv !== "—" ? `<br><span style="font-size:11px;color:var(--ink-soft)">${esc(p.conv)}</span>` : ""}</td>
+        <td class="num">${tl(p.cost)}</td>
+        <td class="num"><b>${tl(p.price)}</b></td>
+        <td class="num"><b style="color:${low ? "var(--red)" : "var(--ink)"}">${st}</b>${low ? ' <span class="badge st-new">kritik</span>' : ""}</td>
+        <td><button class="btn btn-ghost btn-sm" onclick="openEdit('${p.id}')">Düzenle</button></td></tr>`;
+    }).join("") || `<tr><td colspan="9"><div class="empty">Ürün bulunamadı.</div></td></tr>`}
+  </tbody></table></div></div>
+  <p style="font-size:12.5px;color:var(--ink-soft);margin-top:10px">${list.length} ürün gösteriliyor · Excel içe/dışa aktarma gerçek sürümde çift yönlü çalışır (demo'da CSV dışa aktarma aktiftir).</p>
+
+  <div class="modal-bg" id="editModal"><div class="modal" id="editBox"></div></div>`;
+
+  const f = document.getElementById("q");
+  if (q) { f.focus(); f.setSelectionRange(q.length, q.length); }
+}
+
+function openEdit(id) {
+  editId = id;
+  const db = Store.load();
+  const p = id ? Store.product(id) : { name: "", barcode: "", sku: "", cat: "", subcat: "", brand: "", supplierId: db.suppliers[0].id, unit: "Adet", conv: "—", cost: 0, price: 0, prices: {}, stock: {}, critical: 10 };
+  document.getElementById("editBox").innerHTML = `
+    <h3>${id ? "Ürünü Düzenle" : "Yeni Ürün"}</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div style="grid-column:1/3"><label class="lbl">Ürün Adı</label><input class="input" id="e_name" value="${esc(p.name)}"></div>
+      <div><label class="lbl">Barkod</label><input class="input" id="e_barcode" value="${esc(p.barcode)}"></div>
+      <div><label class="lbl">SKU</label><input class="input" id="e_sku" value="${esc(p.sku)}"></div>
+      <div><label class="lbl">Kategori</label><input class="input" id="e_cat" value="${esc(p.cat)}"></div>
+      <div><label class="lbl">Marka</label><input class="input" id="e_brand" value="${esc(p.brand)}"></div>
+      <div><label class="lbl">Tedarikçi</label><select class="input" id="e_sup">${db.suppliers.map(s => `<option value="${s.id}" ${p.supplierId === s.id ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select></div>
+      <div><label class="lbl">Birim</label><input class="input" id="e_unit" value="${esc(p.unit)}"></div>
+      <div style="grid-column:1/3"><label class="lbl">Birim Dönüşümü</label><input class="input" id="e_conv" value="${esc(p.conv)}" placeholder="ör. 1 Koli = 24 Adet"></div>
+      <div><label class="lbl">Son Alış Fiyatı (₺)</label><input class="input" id="e_cost" type="number" step="0.01" value="${p.cost}"></div>
+      <div><label class="lbl">Satış Fiyatı (₺)</label><input class="input" id="e_price" type="number" step="0.01" value="${p.price}"></div>
+      <div><label class="lbl">Kritik Stok Eşiği</label><input class="input" id="e_crit" type="number" value="${p.critical}"></div>
+    </div>
+
+    <h3 style="margin:18px 0 8px;font-size:15px">Müşteriye Özel Fiyatlar</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+      ${db.customers.map(c => `<div><label class="lbl" style="text-transform:none">${esc(c.name)}</label><input class="input" id="e_pr_${c.id}" type="number" step="0.01" value="${(p.prices && p.prices[c.id]) || ""}" placeholder="${p.price}"></div>`).join("")}
+    </div>
+
+    ${id ? `<h3 style="margin:18px 0 8px;font-size:15px">Alış Fiyatı Geçmişi</h3>
+    <div style="font-size:13px;color:var(--ink-soft)">${(db.costHistory[id] || []).map(h => `<div style="padding:3px 0">${fmtDate(h.date)} — <b>${tl(h.cost)}</b></div>`).join("") || "Kayıt yok. Yeni alış girildikçe burada listelenir."}</div>` : ""}
+
+    <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="document.getElementById('editModal').classList.remove('open')">Vazgeç</button>
+      <button class="btn btn-primary" onclick="saveProd()">Kaydet</button>
+    </div>`;
+  document.getElementById("editModal").classList.add("open");
+}
+
+function saveProd() {
+  const db = Store.load();
+  const g = id => document.getElementById(id).value;
+  const prices = {};
+  db.customers.forEach(c => { const v = parseFloat(g("e_pr_" + c.id)); if (v) prices[c.id] = v; });
+  const data = {
+    name: g("e_name"), barcode: g("e_barcode"), sku: g("e_sku"), cat: g("e_cat"),
+    brand: g("e_brand"), supplierId: g("e_sup"), unit: g("e_unit"), conv: g("e_conv") || "—",
+    cost: parseFloat(g("e_cost")) || 0, price: parseFloat(g("e_price")) || 0,
+    critical: parseInt(g("e_crit")) || 0, prices,
+  };
+  if (editId) {
+    const p = Store.product(editId);
+    // alış fiyatı değiştiyse geçmişe ekle
+    if (p.cost !== data.cost) {
+      db.costHistory[editId] = db.costHistory[editId] || [];
+      db.costHistory[editId].push({ date: new Date().toISOString().slice(0, 10), cost: data.cost });
+    }
+    Object.assign(p, data);
+  } else {
+    const newId = "p" + Date.now();
+    db.products.unshift({ id: newId, ...data, stock: { wh1: 0, wh2: 0, wh3: 0 } });
+  }
+  Store.save();
+  document.getElementById("editModal").classList.remove("open");
+  toast("✅ Ürün kaydedildi");
+  draw();
+}
+
+function exportCsv() {
+  const db = Store.load();
+  const rows = [["Ad", "Barkod", "SKU", "Kategori", "Marka", "Tedarikçi", "Birim", "Son Alış", "Satış", "Toplam Stok"]];
+  db.products.forEach(p => rows.push([p.name, p.barcode, p.sku, p.cat, p.brand, Store.supplier(p.supplierId).name, p.unit, p.cost, p.price, Store.totalStock(p)]));
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(";")).join("\n");
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "urunler.csv"; a.click();
+  toast("⬇ urunler.csv indirildi");
+}
+
+draw();
+</script>
+</body>
+</html>

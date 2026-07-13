@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stok & Depo — TedarikPro</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<script src="../js/data.js"></script>
+<script src="../js/store.js"></script>
+<script src="../js/admin.js"></script>
+<script>
+renderShell("Stok & Depo Yönetimi");
+
+let tab = "stok";
+function onDataChange() { draw(); }
+
+function draw() {
+  const db = Store.load();
+  document.getElementById("content").innerHTML = `
+  <div class="tabs no-print">
+    <button class="${tab === "stok" ? "active" : ""}" onclick="tab='stok';draw()">Depo Bazlı Stok</button>
+    <button class="${tab === "transfer" ? "active" : ""}" onclick="tab='transfer';draw()">Depolar Arası Transfer</button>
+    <button class="${tab === "hareket" ? "active" : ""}" onclick="tab='hareket';draw()">Stok Hareketleri</button>
+    <button class="${tab === "kritik" ? "active" : ""}" onclick="tab='kritik';draw()">Kritik Stok</button>
+  </div>
+  <div id="tabBody"></div>`;
+  ({ stok: drawStok, transfer: drawTransfer, hareket: drawHareket, kritik: drawKritik }[tab])();
+}
+
+function drawStok() {
+  const db = Store.load();
+  const q = (document.getElementById("q")?.value || "").toLowerCase();
+  const list = db.products.filter(p => !q || p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q));
+  document.getElementById("tabBody").innerHTML = `
+  <div class="filters no-print"><div class="grow"><label class="lbl">Ara</label><input class="input" id="q" placeholder="Ürün ara…" value="${esc(q)}" oninput="drawStok()"></div></div>
+  <div class="card"><div class="tbl-wrap"><table class="tbl"><thead><tr>
+    <th>Ürün</th><th>Birim</th>${db.warehouses.map(w => `<th class="num">${esc(w.name)}</th>`).join("")}<th class="num">Toplam</th>
+  </tr></thead><tbody>
+    ${list.map(p => {
+      const st = Store.totalStock(p);
+      const low = st <= p.critical;
+      return `<tr><td><b>${esc(p.name)}</b><br><span style="font-size:12px;color:var(--ink-soft)">${esc(p.sku)}</span></td>
+        <td>${esc(p.unit)}</td>
+        ${db.warehouses.map(w => `<td class="num">${p.stock[w.id] || 0}</td>`).join("")}
+        <td class="num"><b style="color:${low ? "var(--red)" : "var(--ink)"}">${st}</b>${low ? ' <span class="badge st-new">kritik</span>' : ""}</td></tr>`;
+    }).join("")}
+  </tbody></table></div></div>`;
+  const f = document.getElementById("q"); if (q) { f.focus(); f.setSelectionRange(q.length, q.length); }
+}
+
+function drawTransfer() {
+  const db = Store.load();
+  document.getElementById("tabBody").innerHTML = `
+  <div class="card card-pad" style="max-width:560px">
+    <h3 style="margin-bottom:14px">🔄 Depolar Arası Stok Transferi</h3>
+    <label class="lbl">Ürün</label>
+    <select class="input" id="t_prod" onchange="updTransferInfo()">${db.products.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join("")}</select>
+    <div id="t_info" style="font-size:12.5px;color:var(--ink-soft);margin:6px 0 12px"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div><label class="lbl">Kaynak Depo</label><select class="input" id="t_from" onchange="updTransferInfo()">${db.warehouses.map(w => `<option value="${w.id}">${esc(w.name)}</option>`).join("")}</select></div>
+      <div><label class="lbl">Hedef Depo</label><select class="input" id="t_to">${db.warehouses.map((w, i) => `<option value="${w.id}" ${i === 1 ? "selected" : ""}>${esc(w.name)}</option>`).join("")}</select></div>
+    </div>
+    <div style="margin-top:12px"><label class="lbl">Miktar</label><input class="input" id="t_qty" type="number" min="1" value="1"></div>
+    <button class="btn btn-primary" style="margin-top:16px" onclick="doTransfer()">Transferi Uygula</button>
+  </div>`;
+  updTransferInfo();
+}
+
+function updTransferInfo() {
+  const p = Store.product(document.getElementById("t_prod").value);
+  const from = document.getElementById("t_from").value;
+  document.getElementById("t_info").innerHTML = `Kaynak depoda mevcut: <b>${p.stock[from] || 0} ${esc(p.unit)}</b> · Toplam: ${Store.totalStock(p)}`;
+}
+
+function doTransfer() {
+  const pid = document.getElementById("t_prod").value;
+  const from = document.getElementById("t_from").value;
+  const to = document.getElementById("t_to").value;
+  const qty = parseInt(document.getElementById("t_qty").value) || 0;
+  if (from === to) { toast("Kaynak ve hedef depo aynı olamaz"); return; }
+  if (qty <= 0) { toast("Geçerli miktar girin"); return; }
+  if (!Store.transferStock(pid, from, to, qty)) { toast("⚠ Kaynak depoda yeterli stok yok"); return; }
+  toast("🔄 Transfer tamam: " + qty + " " + Store.product(pid).unit);
+  updTransferInfo();
+}
+
+function drawHareket() {
+  const db = Store.load();
+  document.getElementById("tabBody").innerHTML = `
+  <div class="card"><div class="tbl-wrap"><table class="tbl"><thead><tr>
+    <th>Tarih</th><th>Tip</th><th>Ürün</th><th class="num">Miktar</th><th>Kaynak</th><th>Hedef</th><th>Referans</th><th>Kullanıcı</th>
+  </tr></thead><tbody>
+    ${db.movements.map(m => {
+      const p = Store.product(m.productId);
+      const tc = { "Giriş": "st-done", "Çıkış": "st-cancel", "Transfer": "st-approved" }[m.type];
+      return `<tr><td>${fmtDateTime(m.date)}</td><td><span class="badge ${tc}">${m.type}</span></td>
+        <td>${p ? esc(p.name) : "—"}</td><td class="num"><b>${m.qty}</b></td>
+        <td>${m.from ? esc(Store.warehouse(m.from).name) : "—"}</td>
+        <td>${m.to ? esc(Store.warehouse(m.to).name) : "—"}</td>
+        <td>${esc(m.ref)}</td><td>${esc(m.user)}</td></tr>`;
+    }).join("")}
+  </tbody></table></div></div>`;
+}
+
+function drawKritik() {
+  const crit = Store.criticalProducts();
+  document.getElementById("tabBody").innerHTML = `
+  <div class="card"><div class="tbl-wrap"><table class="tbl"><thead><tr>
+    <th>Ürün</th><th>Tedarikçi</th><th class="num">Toplam Stok</th><th class="num">Kritik Eşik</th><th class="num">Eksik</th>
+  </tr></thead><tbody>
+    ${crit.length ? crit.map(p => {
+      const st = Store.totalStock(p);
+      return `<tr><td><b>${esc(p.name)}</b><br><span style="font-size:12px;color:var(--ink-soft)">${esc(p.sku)}</span></td>
+        <td style="font-size:13px">${esc(Store.supplier(p.supplierId).name)}</td>
+        <td class="num" style="color:var(--red)"><b>${st}</b></td><td class="num">${p.critical}</td>
+        <td class="num"><b>${Math.max(0, p.critical - st + 1)}</b></td></tr>`;
+    }).join("") : `<tr><td colspan="5"><div class="empty"><div class="big">👍</div>Tüm ürünler güvenli stok seviyesinde.</div></td></tr>`}
+  </tbody></table></div>`;
+}
+
+draw();
+</script>
+</body>
+</html>

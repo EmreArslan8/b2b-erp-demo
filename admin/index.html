@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Panel — TedarikPro</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<script src="../js/data.js"></script>
+<script src="../js/store.js"></script>
+<script src="../js/admin.js"></script>
+<script>
+renderShell("Genel Bakış");
+
+function onDataChange() { draw(); }
+
+function draw() {
+  const db = Store.load();
+  const today = new Date().toDateString();
+  const active = db.orders.filter(o => o.status !== "İptal Edildi");
+
+  const todayOrders = active.filter(o => new Date(o.date).toDateString() === today);
+  const todayTotal = todayOrders.reduce((s, o) => s + Store.orderTotal(o).total, 0);
+  const openOrders = active.filter(o => !["Tamamlandı", "Teslim Edildi"].includes(o.status));
+  const totalReceivable = db.customers.reduce((s, c) => s + Math.max(0, Store.cariSummary(c.id).balance), 0);
+  const critical = Store.criticalProducts();
+
+  // son 7 gün satış grafiği
+  const days = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const key = d.toDateString();
+    const sum = active.filter(o => new Date(o.date).toDateString() === key).reduce((s, o) => s + Store.orderTotal(o).total, 0);
+    days.push({ label: d.toLocaleDateString("tr-TR", { weekday: "short" }), sum });
+  }
+  const maxSum = Math.max(...days.map(d => d.sum), 1);
+
+  document.getElementById("content").innerHTML = `
+  <div class="stats">
+    <div class="card stat"><div class="k">Bugünkü Sipariş</div><div class="v">${todayOrders.length}</div><div class="sub">${tl(todayTotal)}</div></div>
+    <div class="card stat"><div class="k">Açık Sipariş</div><div class="v">${openOrders.length}</div><div class="sub">işlem bekliyor</div></div>
+    <div class="card stat warn"><div class="k">Toplam Alacak</div><div class="v">${tl(totalReceivable)}</div><div class="sub">${db.customers.length} cari hesap</div></div>
+    <div class="card stat danger"><div class="k">Kritik Stok</div><div class="v ${critical.length ? "red" : "green"}">${critical.length} ürün</div><div class="sub">eşik altında</div></div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px">
+    <div class="card card-pad">
+      <h3 style="margin-bottom:14px">Son 7 Gün Satış</h3>
+      <div class="bars">${days.map(d => `
+        <div class="bar">
+          <span class="val">${d.sum ? Math.round(d.sum / 1000) + "K" : ""}</span>
+          <div class="fill" style="height:${Math.max(4, d.sum / maxSum * 110)}px"></div>
+          <span class="lb">${d.label}</span>
+        </div>`).join("")}
+      </div>
+    </div>
+
+    <div class="card card-pad">
+      <h3 style="margin-bottom:14px">⚠️ Kritik Stok Uyarıları</h3>
+      ${critical.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Ürün</th><th class="num">Toplam Stok</th><th class="num">Kritik Eşik</th></tr></thead><tbody>
+        ${critical.map(p => `<tr><td><b>${esc(p.name)}</b><br><span style="font-size:12px;color:var(--ink-soft)">${esc(p.sku)}</span></td><td class="num" style="color:var(--red);font-weight:800">${Store.totalStock(p)} ${esc(p.unit)}</td><td class="num">${p.critical}</td></tr>`).join("")}
+      </tbody></table></div>` : `<div class="empty">Tüm stoklar güvenli seviyede 👍</div>`}
+    </div>
+  </div>
+
+  <div class="card card-pad" style="margin-top:16px">
+    <h3 style="margin-bottom:14px">Son Siparişler</h3>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Sipariş No</th><th>Müşteri</th><th>Tarih</th><th>Durum</th><th class="num">Tutar</th></tr></thead><tbody>
+      ${db.orders.slice(0, 6).map(o => {
+        const c = Store.customer(o.customerId);
+        return `<tr class="clickable" onclick="location.href='siparisler.html?ord=${o.id}'">
+          <td><b>${esc(o.no)}</b></td><td>${esc(c.name)}</td><td>${fmtDateTime(o.date)}</td>
+          <td>${statusBadge(o.status)}</td><td class="num"><b>${tl(Store.orderTotal(o).total)}</b></td></tr>`;
+      }).join("")}
+    </tbody></table></div>
+  </div>`;
+}
+draw();
+</script>
+</body>
+</html>

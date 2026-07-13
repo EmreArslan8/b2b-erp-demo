@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sipariş Ver — TedarikPro</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="shop-head">
+  <div class="brand"><span class="dot"></span> TedarikPro</div>
+  <div class="spacer" style="flex:1"></div>
+  <div class="cust">Sipariş veren firma<b id="custName">—</b></div>
+</header>
+
+<div class="shop-wrap">
+  <input class="input" id="search" type="search" placeholder="🔍 Ürün adı, barkod veya SKU ile ara…" style="padding:13px 16px;font-size:15px">
+  <div class="cat-chips" id="catChips"></div>
+  <div class="prod-grid" id="grid"></div>
+  <div class="empty" id="noResult" style="display:none"><div class="big">🔍</div>Aramanızla eşleşen ürün bulunamadı.</div>
+</div>
+
+<div class="cart-bar" id="cartBar" style="display:none">
+  <div class="cb-info">
+    <div class="cb-count" id="cbCount">0 kalem · 0 birim</div>
+    <div class="cb-total" id="cbTotal">₺0,00</div>
+  </div>
+  <button class="btn btn-ghost btn-sm" style="border-color:rgba(255,255,255,.3);color:#fdfcf5" onclick="clearCart()">Temizle</button>
+  <button class="btn btn-amber" style="font-size:15px;padding:13px 26px" onclick="submitOrder()">Sipariş Ver →</button>
+</div>
+
+<!-- sipariş sonrası onay -->
+<div class="modal-bg" id="doneModal">
+  <div class="modal" style="text-align:center">
+    <div style="font-size:52px">✅</div>
+    <h3 id="doneTitle">Siparişiniz alındı!</h3>
+    <p style="color:var(--ink-soft);margin-bottom:20px" id="doneText"></p>
+    <button class="btn btn-primary" onclick="location.reload()">Yeni Sipariş Oluştur</button>
+    <div style="margin-top:10px"><a href="admin/index.html" style="font-size:13px">Yönetim panelinde gör →</a></div>
+  </div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/store.js"></script>
+<script>
+const params = new URLSearchParams(location.search);
+const cust = Store.customerByLink(params.get("musteri") || "yildiz-market") || Store.load().customers[0];
+document.getElementById("custName").textContent = cust.name;
+document.title = cust.name + " — Sipariş Ver";
+
+let activeCat = "Tümü";
+let cart = {}; // productId -> qty
+
+const cats = ["Tümü", ...new Set(Store.load().products.map(p => p.cat))];
+const chipsEl = document.getElementById("catChips");
+chipsEl.innerHTML = cats.map(c => `<button data-cat="${esc(c)}" class="${c === "Tümü" ? "active" : ""}">${esc(c)}</button>`).join("");
+chipsEl.addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  activeCat = b.dataset.cat;
+  chipsEl.querySelectorAll("button").forEach(x => x.classList.toggle("active", x === b));
+  render();
+});
+
+document.getElementById("search").addEventListener("input", render);
+
+function filtered() {
+  const q = document.getElementById("search").value.trim().toLowerCase();
+  return Store.load().products.filter(p => {
+    if (activeCat !== "Tümü" && p.cat !== activeCat) return false;
+    if (!q) return true;
+    return p.name.toLowerCase().includes(q) || p.barcode.includes(q) || p.sku.toLowerCase().includes(q) || p.brand.toLowerCase().includes(q);
+  });
+}
+
+function render() {
+  const list = filtered();
+  document.getElementById("noResult").style.display = list.length ? "none" : "block";
+  document.getElementById("grid").innerHTML = list.map(p => {
+    const qty = cart[p.id] || 0;
+    const price = Store.priceFor(p, cust.id);
+    return `<div class="card prod ${qty ? "in-cart" : ""}" id="prod-${p.id}">
+      <div class="cat-tag">${esc(p.cat)} · ${esc(p.brand)}</div>
+      <div class="nm">${esc(p.name)}</div>
+      <div class="meta">SKU: ${esc(p.sku)}${p.conv !== "—" ? " · " + esc(p.conv) : ""}</div>
+      <div class="price-row"><span class="price">${tl(price)}</span><span class="unit">/ ${esc(p.unit)}</span></div>
+      <div class="qty-ctrl">
+        <button onclick="chg('${p.id}',-1)">−</button>
+        <input type="number" min="0" value="${qty}" onchange="setQty('${p.id}',this.value)">
+        <button onclick="chg('${p.id}',1)">+</button>
+      </div>
+    </div>`;
+  }).join("");
+  renderCart();
+}
+
+function chg(id, d) { setQty(id, (cart[id] || 0) + d); }
+function setQty(id, v) {
+  v = Math.max(0, parseInt(v) || 0);
+  if (v === 0) delete cart[id]; else cart[id] = v;
+  const el = document.querySelector(`#prod-${id}`);
+  if (el) {
+    el.classList.toggle("in-cart", v > 0);
+    el.querySelector("input").value = v;
+  }
+  renderCart();
+}
+function clearCart() { cart = {}; render(); }
+
+function renderCart() {
+  const ids = Object.keys(cart);
+  const bar = document.getElementById("cartBar");
+  bar.style.display = ids.length ? "flex" : "none";
+  if (!ids.length) return;
+  let units = 0, total = 0;
+  ids.forEach(id => {
+    const p = Store.product(id);
+    units += cart[id];
+    total += cart[id] * Store.priceFor(p, cust.id);
+  });
+  document.getElementById("cbCount").textContent = `${ids.length} kalem · ${units} birim`;
+  document.getElementById("cbTotal").textContent = tl(total);
+}
+
+function submitOrder() {
+  const items = Object.keys(cart).map(id => {
+    const p = Store.product(id);
+    return { productId: id, qty: cart[id], price: Store.priceFor(p, cust.id) };
+  });
+  if (!items.length) return;
+  const order = Store.createOrder(cust.id, items);
+  const t = Store.orderTotal(order);
+  document.getElementById("doneTitle").textContent = order.no + " numaralı siparişiniz alındı!";
+  document.getElementById("doneText").textContent = `Toplam tutar ${tl(t.total)}. Siparişiniz yönetim paneline iletildi; onaylandığında hazırlanmaya başlanacak.`;
+  document.getElementById("doneModal").classList.add("open");
+}
+
+render();
+</script>
+</body>
+</html>
