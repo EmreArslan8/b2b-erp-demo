@@ -7,11 +7,12 @@
 <link rel="stylesheet" href="../css/style.css">
 </head>
 <body>
+<script src="../js/icons.js"></script>
 <script src="../js/data.js"></script>
 <script src="../js/store.js"></script>
 <script src="../js/admin.js"></script>
 <script>
-renderShell("Genel Bakış");
+renderShell("Panel", "Genel Bakış");
 
 function onDataChange() { draw(); }
 
@@ -36,44 +37,50 @@ function draw() {
   }
   const maxSum = Math.max(...days.map(d => d.sum), 1);
 
+  // durum dağılımı
+  const dist = {};
+  active.forEach(o => dist[o.status] = (dist[o.status] || 0) + 1);
+
   document.getElementById("content").innerHTML = `
   <div class="stats">
-    <div class="card stat"><div class="k">Bugünkü Sipariş</div><div class="v">${todayOrders.length}</div><div class="sub">${tl(todayTotal)}</div></div>
-    <div class="card stat"><div class="k">Açık Sipariş</div><div class="v">${openOrders.length}</div><div class="sub">işlem bekliyor</div></div>
-    <div class="card stat warn"><div class="k">Toplam Alacak</div><div class="v">${tl(totalReceivable)}</div><div class="sub">${db.customers.length} cari hesap</div></div>
-    <div class="card stat danger"><div class="k">Kritik Stok</div><div class="v ${critical.length ? "red" : "green"}">${critical.length} ürün</div><div class="sub">eşik altında</div></div>
+    <div class="card stat"><div class="top">${ic("orders")}<span class="k">Bugünkü Sipariş</span></div><div class="v">${todayOrders.length}</div><div class="sub">${tl(todayTotal)}</div></div>
+    <div class="card stat"><div class="top">${ic("clock")}<span class="k">Açık Sipariş</span></div><div class="v accent">${openOrders.length}</div><div class="sub">işlem bekliyor</div></div>
+    <div class="card stat"><div class="top">${ic("wallet")}<span class="k">Toplam Alacak</span></div><div class="v red">${tl(totalReceivable)}</div><div class="sub">${db.customers.length} cari hesap</div></div>
+    <div class="card stat"><div class="top">${ic("alert")}<span class="k">Kritik Stok</span></div><div class="v ${critical.length ? "red" : "green"}">${critical.length}<span class="cur"> ürün</span></div><div class="sub">eşik altında</div></div>
   </div>
 
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px">
+  <div class="grid-2">
     <div class="card card-pad">
-      <h3 style="margin-bottom:14px">Son 7 Gün Satış</h3>
+      <div class="section-head">${ic("chart")}<h3>Son 7 Gün Satış</h3><div class="spacer"></div><a href="raporlar.html" style="font-size:12.5px;font-weight:600">Raporlar →</a></div>
       <div class="bars">${days.map(d => `
         <div class="bar">
-          <span class="val">${d.sum ? Math.round(d.sum / 1000) + "K" : ""}</span>
-          <div class="fill" style="height:${Math.max(4, d.sum / maxSum * 110)}px"></div>
+          <span class="val">${d.sum ? Math.round(d.sum / 1000) + "K" : "—"}</span>
+          <div class="fill" style="height:${Math.max(4, d.sum / maxSum * 110)}px" title="${tl(d.sum)}"></div>
           <span class="lb">${d.label}</span>
         </div>`).join("")}
       </div>
     </div>
 
     <div class="card card-pad">
-      <h3 style="margin-bottom:14px">⚠️ Kritik Stok Uyarıları</h3>
-      ${critical.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Ürün</th><th class="num">Toplam Stok</th><th class="num">Kritik Eşik</th></tr></thead><tbody>
-        ${critical.map(p => `<tr><td><b>${esc(p.name)}</b><br><span style="font-size:12px;color:var(--ink-soft)">${esc(p.sku)}</span></td><td class="num" style="color:var(--red);font-weight:800">${Store.totalStock(p)} ${esc(p.unit)}</td><td class="num">${p.critical}</td></tr>`).join("")}
-      </tbody></table></div>` : `<div class="empty">Tüm stoklar güvenli seviyede 👍</div>`}
+      <div class="section-head">${ic("alert")}<h3>Kritik Stok Uyarıları</h3><div class="spacer"></div>${critical.length ? `<span class="pill">${critical.length} ürün</span>` : ""}</div>
+      ${critical.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Ürün</th><th class="num">Stok</th><th class="num">Eşik</th><th></th></tr></thead><tbody>
+        ${critical.slice(0, 6).map(p => `<tr><td><b>${esc(p.name)}</b><div class="sub mono">${esc(p.sku)}</div></td><td class="num" style="color:var(--red);font-weight:700">${Store.totalStock(p)}</td><td class="num">${p.critical}</td><td><a href="stok.html" class="pill">Tedarik et</a></td></tr>`).join("")}
+      </tbody></table></div>` : `<div class="empty"><div class="big">${ic("check")}</div>Tüm stoklar güvenli seviyede</div>`}
     </div>
   </div>
 
-  <div class="card card-pad" style="margin-top:16px">
-    <h3 style="margin-bottom:14px">Son Siparişler</h3>
-    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Sipariş No</th><th>Müşteri</th><th>Tarih</th><th>Durum</th><th class="num">Tutar</th></tr></thead><tbody>
-      ${db.orders.slice(0, 6).map(o => {
-        const c = Store.customer(o.customerId);
-        return `<tr class="clickable" onclick="location.href='siparisler.html?ord=${o.id}'">
-          <td><b>${esc(o.no)}</b></td><td>${esc(c.name)}</td><td>${fmtDateTime(o.date)}</td>
-          <td>${statusBadge(o.status)}</td><td class="num"><b>${tl(Store.orderTotal(o).total)}</b></td></tr>`;
-      }).join("")}
-    </tbody></table></div>
+  <div class="grid-2" style="margin-top:14px">
+    <div class="card card-pad" style="grid-column:1/-1">
+      <div class="section-head">${ic("orders")}<h3>Son Siparişler</h3><div class="spacer"></div><a href="siparisler.html" style="font-size:12.5px;font-weight:600">Tümü →</a></div>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Sipariş</th><th>Müşteri</th><th>Tarih</th><th>Durum</th><th class="num">Kalem</th><th class="num">Tutar</th></tr></thead><tbody>
+        ${db.orders.slice(0, 7).map(o => {
+          const c = Store.customer(o.customerId);
+          return `<tr class="clickable" onclick="location.href='siparisler.html?ord=${o.id}'">
+            <td class="mono"><b>${esc(o.no)}</b></td><td>${esc(c.name)}</td><td class="sub">${fmtDateTime(o.date)}</td>
+            <td>${statusBadge(o.status)}</td><td class="num">${o.items.length}</td><td class="num"><b>${tl(Store.orderTotal(o).total)}</b></td></tr>`;
+        }).join("")}
+      </tbody></table></div>
+    </div>
   </div>`;
 }
 draw();

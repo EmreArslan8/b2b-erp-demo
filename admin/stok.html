@@ -7,11 +7,12 @@
 <link rel="stylesheet" href="../css/style.css">
 </head>
 <body>
+<script src="../js/icons.js"></script>
 <script src="../js/data.js"></script>
 <script src="../js/store.js"></script>
 <script src="../js/admin.js"></script>
 <script>
-renderShell("Stok & Depo Yönetimi");
+renderShell("Stok & Depo", "Envanter");
 
 let tab = "stok";
 function onDataChange() { draw(); }
@@ -41,13 +42,33 @@ function drawStok() {
     ${list.map(p => {
       const st = Store.totalStock(p);
       const low = st <= p.critical;
-      return `<tr><td><b>${esc(p.name)}</b><br><span style="font-size:12px;color:var(--ink-soft)">${esc(p.sku)}</span></td>
+      return `<tr><td><b>${esc(p.name)}</b><div class="sub mono">${esc(p.sku)}</div></td>
         <td>${esc(p.unit)}</td>
-        ${db.warehouses.map(w => `<td class="num">${p.stock[w.id] || 0}</td>`).join("")}
+        ${db.warehouses.map(w => `<td class="num"><span class="editable" onclick="editStock('${p.id}','${w.id}',this)">${p.stock[w.id] || 0}</span></td>`).join("")}
         <td class="num"><b style="color:${low ? "var(--red)" : "var(--ink)"}">${st}</b>${low ? ' <span class="badge st-new">kritik</span>' : ""}</td></tr>`;
     }).join("")}
-  </tbody></table></div></div>`;
+  </tbody></table></div></div>
+  <p style="font-size:12.5px;color:var(--ink-3);margin-top:10px">Depo hücrelerine tıklayarak stok sayımını yerinde düzeltebilirsiniz; değişiklik stok hareketi olarak kaydedilir.</p>`;
   const f = document.getElementById("q"); if (q) { f.focus(); f.setSelectionRange(q.length, q.length); }
+}
+
+function editStock(pid, wid, el) {
+  const cur = Store.product(pid).stock[wid] || 0;
+  el.innerHTML = `<input class="cell-input" type="number" min="0" style="width:70px;text-align:right" value="${cur}" onblur="commitStock('${pid}','${wid}',this.value,${cur})" onkeydown="if(event.key==='Enter')this.blur()">`;
+  const inp = el.querySelector("input"); inp.focus(); inp.select();
+}
+function commitStock(pid, wid, val, prev) {
+  val = Math.max(0, parseInt(val) || 0);
+  const db = Store.load();
+  const p = Store.product(pid);
+  if (val !== prev) {
+    p.stock[wid] = val;
+    const diff = val - prev;
+    db.movements.unshift({ id: "mv" + Date.now(), date: new Date().toISOString(), type: diff > 0 ? "Giriş" : "Çıkış", productId: pid, qty: Math.abs(diff), from: diff > 0 ? null : wid, to: diff > 0 ? wid : null, ref: "SAYIM", user: currentUser() });
+    Store.save();
+    toast("Stok güncellendi: " + p.name + " → " + val);
+  }
+  drawStok();
 }
 
 function drawTransfer() {

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ayarlar — TedarikPro</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<script src="../js/icons.js"></script>
+<script src="../js/data.js"></script>
+<script src="../js/store.js"></script>
+<script src="../js/admin.js"></script>
+<script>
+renderShell("Ayarlar", "Yönetim");
+
+let tab = "firma";
+function onDataChange() { draw(); }
+
+function draw() {
+  document.getElementById("content").innerHTML = `
+  <div class="tabs no-print">
+    <button class="${tab === "firma" ? "active" : ""}" onclick="tab='firma';draw()">Firma Bilgileri</button>
+    <button class="${tab === "musteri" ? "active" : ""}" onclick="tab='musteri';draw()">Müşteriler / Cari Kartlar</button>
+    <button class="${tab === "tedarikci" ? "active" : ""}" onclick="tab='tedarikci';draw()">Tedarikçiler</button>
+    <button class="${tab === "depo" ? "active" : ""}" onclick="tab='depo';draw()">Depolar</button>
+    <button class="${tab === "kullanici" ? "active" : ""}" onclick="tab='kullanici';draw()">Kullanıcılar & Roller</button>
+  </div>
+  <div id="tabBody"></div>`;
+  ({ firma: rFirma, musteri: rMusteri, tedarikci: rTedarikci, depo: rDepo, kullanici: rKullanici }[tab])();
+}
+
+// ── Firma bilgileri (düzenlenebilir + kalıcı) ──
+function getFirma() {
+  return JSON.parse(localStorage.getItem("b2bErpFirma") || "null") || {
+    name: "TedarikPro Toptan Gıda Ltd. Şti.", tax: "1234567890", address: "Toptancılar Sitesi No:12, İstanbul",
+    phone: "0212 555 00 00", email: "info@tedarikpro.com", currency: "TRY", lowStockAlert: true,
+  };
+}
+function rFirma() {
+  const f = getFirma();
+  document.getElementById("tabBody").innerHTML = `
+  <div class="card card-pad" style="max-width:640px">
+    <div class="section-head">${ic("building")}<h3>Firma Bilgileri</h3></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="field" style="grid-column:1/3"><label class="lbl">Firma Ünvanı</label><input class="input" id="f_name" value="${esc(f.name)}"></div>
+      <div class="field"><label class="lbl">Vergi No</label><input class="input mono" id="f_tax" value="${esc(f.tax)}"></div>
+      <div class="field"><label class="lbl">Telefon</label><input class="input" id="f_phone" value="${esc(f.phone)}"></div>
+      <div class="field" style="grid-column:1/3"><label class="lbl">Adres</label><input class="input" id="f_address" value="${esc(f.address)}"></div>
+      <div class="field"><label class="lbl">E-posta</label><input class="input" id="f_email" value="${esc(f.email)}"></div>
+      <div class="field"><label class="lbl">Para Birimi</label><select class="input" id="f_currency"><option ${f.currency === "TRY" ? "selected" : ""}>TRY</option><option ${f.currency === "USD" ? "selected" : ""}>USD</option><option ${f.currency === "EUR" ? "selected" : ""}>EUR</option></select></div>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;margin:8px 0 16px;font-size:13px;font-weight:500"><input type="checkbox" id="f_alert" ${f.lowStockAlert ? "checked" : ""}> Kritik stok seviyesinde panelde uyarı göster</label>
+    <button class="btn btn-primary" onclick="saveFirma()">${ic("check")} Değişiklikleri Kaydet</button>
+  </div>
+  <p style="font-size:12.5px;color:var(--ink-3);margin-top:10px">Bu bilgiler tedarikçi PDF'lerinde ve raporların başlığında kullanılır.</p>`;
+}
+function saveFirma() {
+  const g = id => document.getElementById(id).value;
+  localStorage.setItem("b2bErpFirma", JSON.stringify({
+    name: g("f_name"), tax: g("f_tax"), address: g("f_address"), phone: g("f_phone"),
+    email: g("f_email"), currency: g("f_currency"), lowStockAlert: document.getElementById("f_alert").checked,
+  }));
+  toast("✓ Firma bilgileri kaydedildi");
+}
+
+// ── Müşteriler / cari kartlar (ekle/düzenle/sil) ──
+function rMusteri() {
+  const db = Store.load();
+  document.getElementById("tabBody").innerHTML = `
+  <div class="section-head">${ic("users")}<h3>Müşteriler & Cari Kartlar</h3><div class="spacer"></div>
+    <button class="btn btn-primary btn-sm" onclick="editCust(null)">${ic("plus")} Yeni Müşteri</button></div>
+  <div class="card"><div class="tbl-wrap"><table class="tbl"><thead><tr>
+    <th>Cari Kod</th><th>Ünvan</th><th>Yetkili</th><th>Telefon</th><th>Sipariş Linki</th><th></th>
+  </tr></thead><tbody>
+    ${db.customers.map(c => `<tr>
+      <td class="mono"><b>${esc(c.code)}</b></td><td><b>${esc(c.name)}</b></td><td>${esc(c.contact)}</td>
+      <td class="mono">${esc(c.phone)}</td>
+      <td><a href="../siparis.html?musteri=${c.link}" target="_blank" class="pill">/${esc(c.link)}</a></td>
+      <td style="white-space:nowrap;text-align:right">
+        <button class="icon-btn" title="Düzenle" onclick="editCust('${c.id}')">${ic("edit")}</button>
+        <button class="icon-btn" title="Sil" onclick="delCust('${c.id}')">${ic("trash")}</button>
+      </td></tr>`).join("")}
+  </tbody></table></div></div>
+  <div class="modal-bg" id="custModal"><div class="modal" id="custBox"></div></div>`;
+}
+function editCust(id) {
+  const c = id ? Store.customer(id) : { code: "CARI-00" + (Store.load().customers.length + 1), name: "", contact: "", phone: "", link: "" };
+  document.getElementById("custBox").innerHTML = `
+    <div class="modal-head"><h3>${id ? "Müşteriyi Düzenle" : "Yeni Müşteri"}</h3><button class="icon-btn" onclick="document.getElementById('custModal').classList.remove('open')">${ic("close")}</button></div>
+    <div class="field"><label class="lbl">Ünvan</label><input class="input" id="c_name" value="${esc(c.name)}"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="field"><label class="lbl">Cari Kod</label><input class="input mono" id="c_code" value="${esc(c.code)}"></div>
+      <div class="field"><label class="lbl">Yetkili Kişi</label><input class="input" id="c_contact" value="${esc(c.contact)}"></div>
+      <div class="field"><label class="lbl">Telefon</label><input class="input" id="c_phone" value="${esc(c.phone)}"></div>
+      <div class="field"><label class="lbl">Link Adı (URL)</label><input class="input mono" id="c_link" value="${esc(c.link)}" placeholder="ornek-firma"></div>
+    </div>
+    <p style="font-size:12px;color:var(--ink-3);margin-bottom:14px">Müşteriye özel fiyatlar, Ürünler ekranındaki her ürün kartından tanımlanır.</p>
+    <div style="display:flex;justify-content:flex-end;gap:8px"><button class="btn btn-ghost" onclick="document.getElementById('custModal').classList.remove('open')">Vazgeç</button><button class="btn btn-primary" onclick="saveCust('${id || ""}')">Kaydet</button></div>`;
+  document.getElementById("custModal").classList.add("open");
+}
+function saveCust(id) {
+  const db = Store.load();
+  const g = i => document.getElementById(i).value.trim();
+  const link = g("c_link").toLowerCase().replace(/[^a-z0-9-]/g, "-") || "musteri-" + Date.now();
+  const data = { code: g("c_code"), name: g("c_name"), contact: g("c_contact"), phone: g("c_phone"), link };
+  if (!data.name) { toast("Ünvan gerekli"); return; }
+  if (id) { Object.assign(Store.customer(id), data); }
+  else { db.customers.push({ id: "cust" + Date.now(), ...data }); }
+  Store.save();
+  document.getElementById("custModal").classList.remove("open");
+  toast("✓ Müşteri kaydedildi"); draw();
+}
+function delCust(id) {
+  const db = Store.load();
+  if (db.orders.some(o => o.customerId === id)) { toast("Siparişi olan müşteri silinemez"); return; }
+  db.customers = db.customers.filter(c => c.id !== id); Store.save(); toast("Müşteri silindi"); draw();
+}
+
+// ── Tedarikçiler ──
+function rTedarikci() {
+  const db = Store.load();
+  document.getElementById("tabBody").innerHTML = `
+  <div class="section-head">${ic("truck")}<h3>Tedarikçiler</h3><div class="spacer"></div>
+    <button class="btn btn-primary btn-sm" onclick="editSup(null)">${ic("plus")} Yeni Tedarikçi</button></div>
+  <div class="card"><div class="tbl-wrap"><table class="tbl"><thead><tr>
+    <th>Tedarikçi</th><th>Yetkili</th><th>Telefon</th><th>E-posta</th><th class="num">Bağlı Ürün</th><th></th>
+  </tr></thead><tbody>
+    ${db.suppliers.map(s => {
+      const cnt = db.products.filter(p => p.supplierId === s.id).length;
+      return `<tr>
+        <td><b>${esc(s.name)}</b></td><td>${esc(s.contact)}</td><td class="mono">${esc(s.phone)}</td>
+        <td>${esc(s.email)}</td><td class="num">${cnt}</td>
+        <td style="white-space:nowrap;text-align:right">
+          <button class="icon-btn" onclick="editSup('${s.id}')">${ic("edit")}</button>
+          <button class="icon-btn" onclick="delSup('${s.id}')">${ic("trash")}</button>
+        </td></tr>`;
+    }).join("")}
+  </tbody></table></div></div>
+  <div class="modal-bg" id="supModal"><div class="modal" id="supBox"></div></div>`;
+}
+function editSup(id) {
+  const s = id ? Store.supplier(id) : { name: "", contact: "", phone: "", email: "" };
+  document.getElementById("supBox").innerHTML = `
+    <div class="modal-head"><h3>${id ? "Tedarikçiyi Düzenle" : "Yeni Tedarikçi"}</h3><button class="icon-btn" onclick="document.getElementById('supModal').classList.remove('open')">${ic("close")}</button></div>
+    <div class="field"><label class="lbl">Firma Adı</label><input class="input" id="s_name" value="${esc(s.name)}"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="field"><label class="lbl">Yetkili Kişi</label><input class="input" id="s_contact" value="${esc(s.contact)}"></div>
+      <div class="field"><label class="lbl">Telefon</label><input class="input" id="s_phone" value="${esc(s.phone)}"></div>
+      <div class="field" style="grid-column:1/3"><label class="lbl">E-posta</label><input class="input" id="s_email" value="${esc(s.email)}"></div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px"><button class="btn btn-ghost" onclick="document.getElementById('supModal').classList.remove('open')">Vazgeç</button><button class="btn btn-primary" onclick="saveSup('${id || ""}')">Kaydet</button></div>`;
+  document.getElementById("supModal").classList.add("open");
+}
+function saveSup(id) {
+  const db = Store.load();
+  const g = i => document.getElementById(i).value.trim();
+  const data = { name: g("s_name"), contact: g("s_contact"), phone: g("s_phone"), email: g("s_email") };
+  if (!data.name) { toast("Firma adı gerekli"); return; }
+  if (id) { Object.assign(Store.supplier(id), data); }
+  else { db.suppliers.push({ id: "sup" + Date.now(), ...data }); }
+  Store.save(); document.getElementById("supModal").classList.remove("open"); toast("✓ Tedarikçi kaydedildi"); draw();
+}
+function delSup(id) {
+  const db = Store.load();
+  if (db.products.some(p => p.supplierId === id)) { toast("Ürünü olan tedarikçi silinemez"); return; }
+  db.suppliers = db.suppliers.filter(s => s.id !== id); Store.save(); toast("Tedarikçi silindi"); draw();
+}
+
+// ── Depolar ──
+function rDepo() {
+  const db = Store.load();
+  document.getElementById("tabBody").innerHTML = `
+  <div class="section-head">${ic("warehouse")}<h3>Depolar</h3><div class="spacer"></div>
+    <button class="btn btn-primary btn-sm" onclick="addDepo()">${ic("plus")} Yeni Depo</button></div>
+  <div class="card"><div class="tbl-wrap"><table class="tbl"><thead><tr>
+    <th>Depo Adı</th><th class="num">Ürün Çeşidi</th><th class="num">Toplam Adet</th><th></th>
+  </tr></thead><tbody>
+    ${db.warehouses.map(w => {
+      const variety = db.products.filter(p => (p.stock[w.id] || 0) > 0).length;
+      const total = db.products.reduce((s, p) => s + (p.stock[w.id] || 0), 0);
+      return `<tr>
+        <td><b class="editable" onclick="renameDepo('${w.id}',this)">${esc(w.name)}</b></td>
+        <td class="num">${variety}</td><td class="num">${total}</td>
+        <td style="text-align:right"><button class="icon-btn" onclick="delDepo('${w.id}')">${ic("trash")}</button></td></tr>`;
+    }).join("")}
+  </tbody></table></div></div>
+  <p style="font-size:12.5px;color:var(--ink-3);margin-top:10px">Depo adına tıklayarak yerinde düzenleyebilirsiniz. Depolar arası transfer, Stok ekranından yapılır.</p>`;
+}
+function renameDepo(id, el) {
+  const w = Store.warehouse(id);
+  el.innerHTML = `<input class="cell-input" style="width:160px" value="${esc(w.name)}" onblur="commitDepo('${id}',this.value)" onkeydown="if(event.key==='Enter')this.blur()">`;
+  el.querySelector("input").focus();
+}
+function commitDepo(id, val) {
+  val = val.trim(); if (val) { Store.warehouse(id).name = val; Store.save(); toast("Depo adı güncellendi"); }
+  draw();
+}
+function addDepo() {
+  const db = Store.load();
+  db.warehouses.push({ id: "wh" + Date.now(), name: "Yeni Depo" });
+  Store.save(); toast("✓ Depo eklendi"); draw();
+}
+function delDepo(id) {
+  const db = Store.load();
+  if (db.warehouses.length <= 1) { toast("En az bir depo olmalı"); return; }
+  const hasStock = db.products.some(p => (p.stock[id] || 0) > 0);
+  if (hasStock) { toast("Stok bulunan depo silinemez, önce transfer edin"); return; }
+  db.warehouses = db.warehouses.filter(w => w.id !== id); Store.save(); toast("Depo silindi"); draw();
+}
+
+// ── Kullanıcılar & roller (statik demo) ──
+function rKullanici() {
+  const users = [
+    { name: "Burak Yılmaz", email: "burak@tedarikpro.com", role: "Süper Admin" },
+    { name: "Zeynep Ak", email: "zeynep@tedarikpro.com", role: "Admin" },
+    { name: "Kaan Demir", email: "kaan@tedarikpro.com", role: "Satış Personeli" },
+  ];
+  const perm = {
+    "Süper Admin": "Tüm modüller + ayarlar + kullanıcı yönetimi",
+    "Admin": "Sipariş, ürün, cari, stok, rapor (ayarlar hariç)",
+    "Satış Personeli": "Panel, sipariş ve cari hesap",
+  };
+  document.getElementById("tabBody").innerHTML = `
+  <div class="grid-2">
+    <div class="card card-pad">
+      <div class="section-head">${ic("users")}<h3>Kullanıcılar</h3><div class="spacer"></div><button class="btn btn-ghost btn-sm" onclick="toast('Demo: kullanıcı davet formu gerçek sürümde açılır')">${ic("plus")} Davet Et</button></div>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Ad</th><th>E-posta</th><th>Rol</th></tr></thead><tbody>
+        ${users.map(u => `<tr><td><b>${esc(u.name)}</b></td><td class="sub">${esc(u.email)}</td><td><span class="pill">${esc(u.role)}</span></td></tr>`).join("")}
+      </tbody></table></div>
+    </div>
+    <div class="card card-pad">
+      <div class="section-head">${ic("settings")}<h3>Rol Yetkileri</h3></div>
+      ${Object.entries(perm).map(([r, p]) => `<div style="padding:10px 0;border-bottom:1px solid var(--line-2)"><b>${esc(r)}</b><div class="sub" style="color:var(--ink-3)">${esc(p)}</div></div>`).join("")}
+      <p style="font-size:12.5px;color:var(--ink-3);margin-top:12px">Üst çubuktaki <b>Rol</b> seçicisi ile farklı rollerde menü erişimini deneyebilirsiniz.</p>
+    </div>
+  </div>`;
+}
+
+draw();
+</script>
+</body>
+</html>

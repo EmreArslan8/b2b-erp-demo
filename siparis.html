@@ -9,13 +9,17 @@
 <body>
 
 <header class="shop-head">
-  <div class="brand"><span class="dot"></span> TedarikPro</div>
+  <div class="brand"><span class="logo-mark" id="logoMark"></span> TedarikPro</div>
   <div class="spacer" style="flex:1"></div>
   <div class="cust">Sipariş veren firma<b id="custName">—</b></div>
 </header>
 
 <div class="shop-wrap">
-  <input class="input" id="search" type="search" placeholder="🔍 Ürün adı, barkod veya SKU ile ara…" style="padding:13px 16px;font-size:15px">
+  <div class="shop-toolbar">
+    <div class="searchbox" style="flex:1;min-width:240px" id="searchWrap">
+      <input class="input" id="search" type="search" placeholder="Ürün adı, barkod, SKU veya marka ile ara…" style="padding-top:11px;padding-bottom:11px">
+    </div>
+  </div>
   <div class="cat-chips" id="catChips"></div>
   <div class="prod-grid" id="grid"></div>
   <div class="empty" id="noResult" style="display:none"><div class="big">🔍</div>Aramanızla eşleşen ürün bulunamadı.</div>
@@ -41,9 +45,12 @@
   </div>
 </div>
 
+<script src="js/icons.js"></script>
 <script src="js/data.js"></script>
 <script src="js/store.js"></script>
 <script>
+document.getElementById("logoMark").innerHTML = ic("box");
+document.getElementById("searchWrap").insertAdjacentHTML("afterbegin", ic("search"));
 const params = new URLSearchParams(location.search);
 const cust = Store.customerByLink(params.get("musteri") || "yildiz-market") || Store.load().customers[0];
 document.getElementById("custName").textContent = cust.name;
