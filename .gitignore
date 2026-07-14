@@ -6,3 +6,5 @@ node_modules/
 .DS_Store
 *.tsbuildinfo
 supabase/**/*.sql
+TASK_LIST.md
+.playwright-cli/

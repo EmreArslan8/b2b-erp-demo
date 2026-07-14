@@ -23,7 +23,6 @@ function ProductFields({ product, suppliers, customers, includeExtras = false }:
       <div className="field"><label className="lbl">Satış Fiyatı (₺)</label><input className="input" name="price" type="number" min="0" step="0.01" defaultValue={product?.price ?? 0} /></div>
       <div className="field"><label className="lbl">Kritik Stok Eşiği</label><input className="input" name="critical_level" type="number" min="0" step="1" defaultValue={product?.critical_level ?? 0} /></div>
       <div className="field wide"><label className="lbl">Ürün Görseli</label><input className="input" name="image" type="file" accept="image/*" /><span className="sub">Yeni görsel seçerseniz mevcut görsel değiştirilir.</span></div>
-      <div className="field wide"><label className="lbl">Ürün Görseli</label><input className="input" name="image" type="file" accept="image/*" /><span className="sub">Yeni görsel seçerseniz mevcut görsel değiştirilir.</span></div>
     </div>
     <h3 className="popup-subtitle">Müşteriye Özel Fiyatlar</h3>
     <div className="customer-price-grid">{customers.map((customer) => <div className="field" key={customer.id}><label className="lbl normal-case">{customer.name}</label><input className="input" name={`customer_price_${customer.id}`} type="number" min="0" step="0.01" defaultValue={prices.get(customer.id) ?? ""} placeholder={String(product?.price ?? 0)} /></div>)}</div>

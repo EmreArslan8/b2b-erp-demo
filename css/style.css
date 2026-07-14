@@ -302,6 +302,75 @@ details > summary.btn { display: inline-flex; cursor: pointer; user-select: none
 .order-summary { margin: 8px 0 18px; }
 .order-summary-row, .order-summary-total { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line-2); }
 .order-summary-total { border-top: 2px solid var(--line); border-bottom: 0; margin-top: 4px; padding-top: 12px; font-weight: 700; }
+.order-row { width: 100%; }
+.order-row summary { list-style: none; cursor: pointer; }
+.order-row summary::-webkit-details-marker { display: none; }
+.order-row-main { display: grid; grid-template-columns: 1.1fr 1fr .8fr 1.2fr .8fr 22px; gap: 12px; align-items: center; width: 100%; }
+.order-row-chevron { color: var(--ink-3); font-size: 18px; transition: transform .15s; }
+.order-row[open] .order-row-chevron { transform: rotate(180deg); }
+.order-detail { display: grid; grid-template-columns: 1.3fr .8fr; gap: 28px; margin-top: 14px; padding: 16px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--canvas); }
+.order-items { display: grid; gap: 6px; margin-top: 8px; }
+.order-item { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--line-2); }
+.order-item small { display: block; color: var(--ink-3); font-size: 11px; margin-top: 3px; }
+.order-item > span:last-child { text-align: right; }
+.order-note { margin-top: 14px; padding: 10px 12px; border-left: 3px solid var(--accent); background: var(--accent-soft); font-size: 12.5px; }
+.order-detail-actions { display: grid; align-content: start; gap: 16px; }
+.supplier-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line-2); }
+.supplier-print { display: none; }
+.supplier-print table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+.supplier-print th, .supplier-print td { padding: 7px 8px; border: 1px solid #bbb; text-align: left; }
+.supplier-print tfoot th { background: #f0f0f0; }
+.customer-link-actions { display: flex; gap: 6px; align-items: center; white-space: nowrap; }
+.payment-details { display: inline-flex; flex-direction: column; align-items: flex-start; vertical-align: middle; margin: 0 0 0 6px; }
+.payment-details > summary { display: inline-block; cursor: pointer; }
+.payment-form { display: grid; gap: 6px; width: 240px; margin-top: 8px; padding: 12px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--canvas); }
+.payment-form-actions { display: flex; gap: 6px; margin-top: 4px; }
+.payment-modal { width: min(480px, calc(100vw - 36px)); }
+.payment-modal-form { margin-top: 20px; }
+.payment-modal-form .field { margin-bottom: 12px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.payment-history { display: grid; gap: 8px; margin-top: 20px; }
+.payment-history-row { display: flex; justify-content: space-between; gap: 14px; padding: 12px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--canvas); }
+.payment-history-row span { display: block; color: var(--ink-3); font-size: 12px; margin-top: 4px; }
+.payment-history-row > .sub { text-align: right; }
+.payment-modal h4 { margin-top: 18px; }
+.payment-divider { height: 1px; background: var(--line-2); margin: 22px 0; }
+.stock-modal { width: min(560px, calc(100vw - 36px)); }
+.stock-form { margin-top: 18px; }
+.stock-form .field { margin-bottom: 12px; }
+.supplier-modal { width: min(500px, calc(100vw - 36px)); }
+.supplier-form { margin-top: 18px; }
+.supplier-form .field { margin-bottom: 12px; }
+.table-actions { display: flex; align-items: center; gap: 6px; }
+.table-actions form { display: inline-flex; }
+.card:has(.table-actions) { padding: 0 0 18px; }
+.card:has(.table-actions) .tbl-wrap { margin: 0; }
+.card:has(.table-actions) .tbl { table-layout: fixed; }
+.card:has(.table-actions) .tbl th, .card:has(.table-actions) .tbl td { padding: 14px 12px; }
+.card:has(.table-actions) .tbl th:nth-child(1), .card:has(.table-actions) .tbl td:nth-child(1) { width: 28%; }
+.card:has(.table-actions) .tbl th:nth-child(2), .card:has(.table-actions) .tbl td:nth-child(2) { width: 15%; }
+.card:has(.table-actions) .tbl th:nth-child(3), .card:has(.table-actions) .tbl td:nth-child(3) { width: 15%; }
+.card:has(.table-actions) .tbl th:nth-child(4), .card:has(.table-actions) .tbl td:nth-child(4) { width: 20%; }
+.card:has(.table-actions) .tbl th:nth-child(5), .card:has(.table-actions) .tbl td:nth-child(5) { width: 12%; }
+.card:has(.table-actions) .tbl th:last-child { font-size: 0; width: 18%; }
+.card:has(.table-actions) .tbl th:last-child::after { content: "İŞLEMLER"; font-size: 11px; }
+.card:has(.table-actions) .tbl td:last-child { white-space: nowrap; }
+.supplier-products { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line-2); }
+.supplier-products-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.supplier-product-list { display: grid; gap: 6px; margin-top: 12px; }
+.supplier-product-row { display: flex; justify-content: space-between; gap: 16px; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--canvas); }
+.supplier-product-row small { display: block; color: var(--ink-3); font-size: 11px; margin-top: 3px; }
+.report-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
+.report-card { min-width: 0; }
+.report-card h3 { margin-bottom: 12px; }
+.report-error { margin-bottom: 14px; color: var(--danger); }
+.settings-user { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 16px; padding: 14px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--canvas); }
+.role-form { display: flex; align-items: center; gap: 7px; }
+.role-form .input { width: 170px; }
+.customer-link-actions { display: inline-flex; vertical-align: middle; flex-wrap: nowrap; }
+.order-status-form { padding-bottom: 16px; border-bottom: 1px solid var(--line-2); }
+.inline-form { display: flex; gap: 8px; align-items: center; }
+.inline-form .input { min-width: 0; flex: 1; }
 .order-confirm { max-height: calc(100vh - 48px); overflow-y: auto; }
 .shop-wrap { max-width: 1180px; margin: 0 auto; padding: 20px 18px 150px; }
 .shop-toolbar { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
@@ -384,11 +453,21 @@ details > summary.btn { display: inline-flex; cursor: pointer; user-select: none
   .product-catalog .filters { gap: 7px; margin-bottom: 9px; }
   .product-catalog .filters > div:last-child { width: 100%; }
   .product-catalog .filters > div:last-child .btn { flex: 1; }
+  .order-row-main { grid-template-columns: 1fr auto; gap: 5px 10px; }
+  .order-row-main > span:nth-child(2), .order-row-main > span:nth-child(3), .order-row-main > span:nth-child(4) { grid-column: 1; }
+  .order-row-main .order-row-total, .order-row-main .order-row-chevron { grid-column: 2; grid-row: 1 / span 3; align-self: center; }
+  .order-row-main .order-row-chevron { grid-row: 1; align-self: start; }
+  .order-detail { grid-template-columns: 1fr; gap: 16px; padding: 12px; }
+  .order-item { font-size: 12px; }
+  .inline-form { align-items: stretch; flex-direction: column; }
+  .customer-link-actions { flex-wrap: wrap; white-space: normal; }
+  .report-grid { grid-template-columns: 1fr; }
 }
 
 @media print { body * { visibility: hidden; } #printArea, #printArea * { visibility: visible; } #printArea { position: absolute; left: 0; top: 0; width: 100%; padding: 20px; } .no-print { display: none !important; } }
 #printArea { display: none; }
 @media print { #printArea { display: block; } }
+@media print { body * { visibility: hidden; } .supplier-print.print-active, .supplier-print.print-active * { visibility: visible; } .supplier-print.print-active { display: block; position: absolute; inset: 0; padding: 24px; background: #fff; } }
 .pdf-doc { font-family: var(--font-body); color: #111; }
 .pdf-doc .pdf-brand { display: flex; align-items: center; gap: 8px; font-family: var(--font-display); font-weight: 800; font-size: 18px; margin-bottom: 4px; }
 .pdf-doc h2 { font-size: 20px; margin-bottom: 4px; }

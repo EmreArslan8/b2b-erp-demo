@@ -44,21 +44,21 @@ export async function getProducts() {
 export async function getSuppliers() {
   if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
   const supabase = await createClient();
-  const result = await supabase.from("suppliers").select("id,name").order("name");
+  const result = await supabase.from("suppliers").select("id,name,contact,phone,email,products(id,name,sku,cost,price,active)").order("name");
   return { data: result.data ?? [], error: result.error?.message ?? null };
 }
 
 export async function getOrders() {
   if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
   const supabase = await createClient();
-  const result = await supabase.from("orders").select("id,order_no,status,note,discount,created_at,customers(name),order_items(qty,price,products(name))").order("created_at", { ascending: false });
+  const result = await supabase.from("orders").select("id,order_no,status,note,discount,manual_total,customer_id,created_at,customers(name),order_items(id,qty,price,products(name,sku,cost,supplier_id,suppliers(name)))").order("created_at", { ascending: false });
   return { data: result.data ?? [], error: result.error?.message ?? null };
 }
 
 export async function getCustomers() {
   if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
   const supabase = await createClient();
-  const result = await supabase.from("customers").select("id,code,name,contact,phone,link_slug,active").order("name");
+  const result = await supabase.from("customers").select("id,code,name,contact,phone,link_slug,active,orders(id,manual_total,discount,order_items(qty,price)),payments(id,amount,method,note,created_at)").order("name");
   return { data: result.data ?? [], error: result.error?.message ?? null };
 }
 
@@ -66,5 +66,47 @@ export async function getStock() {
   if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
   const supabase = await createClient();
   const result = await supabase.from("product_stock").select("product_id,warehouse_id,quantity,products(name,sku,critical_level),warehouses(name)").order("quantity");
+  return { data: result.data ?? [], error: result.error?.message ?? null };
+}
+
+export async function getStockOptions() {
+  if (!isSupabaseConfigured()) return { products: [], warehouses: [], error: "Supabase ayarları eksik." };
+  const supabase = await createClient();
+  const [products, warehouses] = await Promise.all([
+    supabase.from("products").select("id,name,sku,unit").eq("active", true).order("name"),
+    supabase.from("warehouses").select("id,name").eq("active", true).order("name"),
+  ]);
+  return { products: products.data ?? [], warehouses: warehouses.data ?? [], error: products.error?.message ?? warehouses.error?.message ?? null };
+}
+
+export async function getReportsData() {
+  if (!isSupabaseConfigured()) return { error: "Supabase ayarları eksik.", sales: { daily: 0, monthly: 0 }, payments: 0, profit: 0, products: [], customers: [], suppliers: [], critical: [] };
+  const supabase = await createClient();
+  const [orders, payments, stock] = await Promise.all([
+    supabase.from("orders").select("status,customer_id,created_at,manual_total,discount,customers(name),order_items(qty,price,products(name,cost,suppliers(name)))"),
+    supabase.from("payments").select("amount"),
+    supabase.from("product_stock").select("quantity,products(name,sku,critical_level),warehouses(name)"),
+  ]);
+  const error = orders.error?.message ?? payments.error?.message ?? stock.error?.message ?? null;
+  const now = new Date(); const today = now.toDateString(); const month = `${now.getFullYear()}-${now.getMonth()}`;
+  const products = new Map<string, { name: string; qty: number; sales: number; cost: number }>(); const customers = new Map<string, { name: string; sales: number }>(); const suppliers = new Map<string, { name: string; qty: number; cost: number }>(); let daily = 0; let monthly = 0; let profit = 0;
+  for (const order of orders.data ?? []) { if (order.status === "İptal Edildi") continue; const date = new Date(order.created_at); const customer = Array.isArray(order.customers) ? order.customers[0] : order.customers; let orderTotal = 0; for (const item of order.order_items ?? []) { const product = Array.isArray(item.products) ? item.products[0] : item.products; const qty = Number(item.qty); const sales = qty * Number(item.price); const cost = qty * Number(product?.cost ?? 0); orderTotal += sales; profit += sales - cost; const productRow = products.get(product?.name ?? "Ürün") ?? { name: product?.name ?? "Ürün", qty: 0, sales: 0, cost: 0 }; productRow.qty += qty; productRow.sales += sales; productRow.cost += cost; products.set(productRow.name, productRow); const supplier = Array.isArray(product?.suppliers) ? product?.suppliers[0] : product?.suppliers; const supplierRow = suppliers.get(supplier?.name ?? "Belirtilmemiş") ?? { name: supplier?.name ?? "Belirtilmemiş", qty: 0, cost: 0 }; supplierRow.qty += qty; supplierRow.cost += cost; suppliers.set(supplierRow.name, supplierRow); } const finalTotal = Number(order.manual_total ?? orderTotal - Number(order.discount ?? 0)); if (date.toDateString() === today) daily += finalTotal; if (`${date.getFullYear()}-${date.getMonth()}` === month) monthly += finalTotal; const customerRow = customers.get(order.customer_id) ?? { name: customer?.name ?? "Müşteri", sales: 0 }; customerRow.sales += finalTotal; customers.set(order.customer_id, customerRow); }
+  const critical = (stock.data ?? []).map((row) => { const product = Array.isArray(row.products) ? row.products[0] : row.products; const warehouse = Array.isArray(row.warehouses) ? row.warehouses[0] : row.warehouses; return { product: product?.name ?? "Ürün", warehouse: warehouse?.name ?? "Depo", quantity: Number(row.quantity), critical: Number(product?.critical_level ?? 0) }; }).filter((row) => row.quantity <= row.critical);
+  return { error, sales: { daily, monthly }, payments: (payments.data ?? []).reduce((sum, row) => sum + Number(row.amount), 0), profit, products: [...products.values()].sort((a, b) => b.sales - a.sales), customers: [...customers.values()].sort((a, b) => b.sales - a.sales), suppliers: [...suppliers.values()].sort((a, b) => b.cost - a.cost), critical };
+}
+
+export async function getCurrentProfile() {
+  if (!isSupabaseConfigured()) return { data: null, error: null };
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { data: null, error: null };
+  const result = await supabase.from("profiles").select("id,full_name,role,active").eq("id", user.id).maybeSingle();
+  return { data: result.data, error: result.error?.message ?? null };
+}
+
+export async function getProfiles() {
+  if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
+  const supabase = await createClient();
+  const result = await supabase.from("profiles").select("id,full_name,role,active,created_at").order("created_at");
   return { data: result.data ?? [], error: result.error?.message ?? null };
 }
