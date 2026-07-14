@@ -7,7 +7,18 @@ const Store = {
   load() {
     if (this._db) return this._db;
     const raw = localStorage.getItem(DB_KEY);
-    if (raw) { this._db = JSON.parse(raw); return this._db; }
+    if (raw) {
+      this._db = JSON.parse(raw);
+      // Yeni katalog seed'leri mevcut kullanıcı verisini silmeden eklenir.
+      const seedSupplier = SEED.suppliers.find(s => s.id === "sup4");
+      if (seedSupplier && !this._db.suppliers.some(s => s.id === seedSupplier.id)) this._db.suppliers.push(seedSupplier);
+      const missingProducts = SEED.products.filter(seedProduct => !this._db.products.some(p => p.id === seedProduct.id));
+      if (missingProducts.length) {
+        this._db.products.push(...JSON.parse(JSON.stringify(missingProducts)));
+        this.save();
+      }
+      return this._db;
+    }
     const dyn = seedDynamic();
     this._db = {
       suppliers: SEED.suppliers, warehouses: SEED.warehouses, customers: SEED.customers,
@@ -18,7 +29,10 @@ const Store = {
     return this._db;
   },
 
-  save() { localStorage.setItem(DB_KEY, JSON.stringify(this._db)); },
+  save() {
+    localStorage.setItem(DB_KEY, JSON.stringify(this._db));
+    if (typeof SupabaseSync !== "undefined") SupabaseSync.schedule(this._db);
+  },
   reset() { localStorage.removeItem(DB_KEY); this._db = null; this.load(); },
 
   // ── lookup helpers ──

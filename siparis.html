@@ -46,9 +46,13 @@
 </div>
 
 <script src="js/icons.js"></script>
+<script src="js/supabase-config.js"></script>
+<script src="js/supabase-sync.js"></script>
 <script src="js/data.js"></script>
 <script src="js/store.js"></script>
 <script>
+SupabaseSync.start();
+window.addEventListener("supabase-data-ready", () => location.reload());
 document.getElementById("logoMark").innerHTML = ic("box");
 document.getElementById("searchWrap").insertAdjacentHTML("afterbegin", ic("search"));
 const params = new URLSearchParams(location.search);

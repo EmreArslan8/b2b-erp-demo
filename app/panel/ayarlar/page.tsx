@@ -1,0 +1,1 @@
+export default function SettingsPage() { return <section><div className="crumb">Yönetim</div><h2 style={{ marginBottom: 16 }}>Ayarlar</h2><div className="card card-pad"><h3>Firma ve bağlantı ayarları</h3><p className="sub" style={{ marginTop: 8 }}>Supabase bağlantısı ortam değişkenlerinden yönetilir. Kullanıcı rolleri Auth ve profiles tablosuna bağlanacak.</p></div></section>; }

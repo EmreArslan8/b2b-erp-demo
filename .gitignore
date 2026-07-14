@@ -1,0 +1,8 @@
+js/supabase-config.local.js
+node_modules/
+.next/
+.env
+.env.*
+.DS_Store
+*.tsbuildinfo
+supabase/**/*.sql

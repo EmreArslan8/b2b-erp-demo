@@ -31,6 +31,7 @@ function badgeVal(key) {
 }
 
 function renderShell(title, crumb) {
+  if (typeof SupabaseSync !== "undefined") SupabaseSync.start();
   const page = location.pathname.split("/").pop() || "index.html";
   const role = currentRole();
   const allowed = ROLES[role];
