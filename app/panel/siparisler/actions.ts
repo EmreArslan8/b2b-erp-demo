@@ -34,11 +34,8 @@ export async function updateOrderStatus(formData: FormData) {
         if (available < qty) throw new Error(`${(Array.isArray(item.products) ? item.products[0] : item.products)?.name ?? "Ürün"} için stok yetersiz. Mevcut: ${available}`);
       }
       for (const item of current.data.order_items ?? []) {
-        const stock = await supabase.from("product_stock").select("quantity").eq("product_id", item.product_id).eq("warehouse_id", warehouse.data.id).maybeSingle();
         const qty = Number(item.qty);
-        const update = await supabase.from("product_stock").upsert({ product_id: item.product_id, warehouse_id: warehouse.data.id, quantity: Number(stock.data?.quantity ?? 0) - qty }, { onConflict: "product_id,warehouse_id" });
-        if (update.error) throw new Error(update.error.message);
-        const movement = await supabase.from("stock_movements").insert({ type: "Çıkış", product_id: item.product_id, qty, from_warehouse: warehouse.data.id, to_warehouse: null, ref });
+        const movement = await supabase.rpc("apply_stock_movement", { p_type: "Çıkış", p_product_id: item.product_id, p_warehouse_id: warehouse.data.id, p_from_warehouse: warehouse.data.id, p_to_warehouse: null, p_qty: qty, p_ref: ref });
         if (movement.error) throw new Error(movement.error.message);
       }
     }

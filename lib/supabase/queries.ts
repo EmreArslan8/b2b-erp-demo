@@ -1,7 +1,7 @@
 import { createClient, isSupabaseConfigured } from "./server";
 
 export async function getDashboardData() {
-  if (!isSupabaseConfigured()) return { connected: false, error: "Supabase ayarları eksik. .env.example dosyasını .env.local olarak kopyalayın.", todayOrders: 0, openOrders: 0, customerCount: 0, critical: 0, paymentTotal: 0 };
+  if (!isSupabaseConfigured()) return { connected: false, error: "Veri bağlantısı ayarları eksik. .env.example dosyasını .env.local olarak kopyalayın.", todayOrders: 0, openOrders: 0, customerCount: 0, critical: 0, paymentTotal: 0 };
   const supabase = await createClient();
   const [orders, customers, products, stock, payments] = await Promise.all([
     supabase.from("orders").select("id,status,created_at").order("created_at", { ascending: false }),
@@ -22,7 +22,7 @@ export async function getDashboardData() {
 }
 
 export async function getCustomerProducts(slug: string) {
-  if (!isSupabaseConfigured()) return { customer: null, products: [], error: "Supabase ayarları eksik. .env.example dosyasını .env.local olarak kopyalayın." };
+  if (!isSupabaseConfigured()) return { customer: null, products: [], error: "Veri bağlantısı ayarları eksik. .env.example dosyasını .env.local olarak kopyalayın." };
   const supabase = await createClient();
   const customer = await supabase.from("customers").select("id,name,link_slug").eq("link_slug", slug).eq("active", true).maybeSingle();
   if (customer.error || !customer.data) return { customer: null, products: [], error: customer.error?.message ?? "Müşteri bulunamadı" };
@@ -35,7 +35,7 @@ export async function getCustomerProducts(slug: string) {
 }
 
 export async function getProducts() {
-  if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
+  if (!isSupabaseConfigured()) return { data: [], error: "Veri bağlantısı ayarları eksik." };
   const supabase = await createClient();
   const result = await supabase.from("products").select("id,name,barcode,sku,category,subcategory,brand,supplier_id,unit,price,cost,critical_level,active,image_url,sort_order,product_prices(customer_id,price),cost_history(id,cost,changed_at)").order("sort_order", { ascending: true }).order("name", { ascending: true });
   return { data: result.data ?? [], error: result.error?.message ?? null };
@@ -45,6 +45,12 @@ export async function getSuppliers() {
   if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
   const supabase = await createClient();
   const result = await supabase.from("suppliers").select("id,name,contact,phone,email,products(id,name,sku,cost,price,active)").order("name");
+  return { data: result.data ?? [], error: result.error?.message ?? null };
+}
+
+export async function getSupplierOptions() {
+  if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
+  const result = await (await createClient()).from("suppliers").select("id,name").order("name");
   return { data: result.data ?? [], error: result.error?.message ?? null };
 }
 
@@ -58,7 +64,13 @@ export async function getOrders() {
 export async function getCustomers() {
   if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
   const supabase = await createClient();
-  const result = await supabase.from("customers").select("id,code,name,contact,phone,link_slug,active,orders(id,manual_total,discount,order_items(qty,price)),payments(id,amount,method,note,created_at)").order("name");
+  const result = await supabase.from("customers").select("id,code,name,contact,phone,link_slug,active,orders(id,order_no,manual_total,discount,order_items(qty,price)),payments(id,order_id,amount,method,note,created_at)").order("name");
+  return { data: result.data ?? [], error: result.error?.message ?? null };
+}
+
+export async function getCustomerOptions() {
+  if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
+  const result = await (await createClient()).from("customers").select("id,name").eq("active", true).order("name");
   return { data: result.data ?? [], error: result.error?.message ?? null };
 }
 
@@ -66,6 +78,12 @@ export async function getStock() {
   if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
   const supabase = await createClient();
   const result = await supabase.from("product_stock").select("product_id,warehouse_id,quantity,products(name,sku,critical_level),warehouses(name)").order("quantity");
+  return { data: result.data ?? [], error: result.error?.message ?? null };
+}
+
+export async function getStockTotals() {
+  if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
+  const result = await (await createClient()).from("product_stock").select("product_id,quantity");
   return { data: result.data ?? [], error: result.error?.message ?? null };
 }
 
@@ -136,6 +154,18 @@ export async function getProfiles() {
 
 export async function getTasks() {
   if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
-  const result = await (await createClient()).from("tasks").select("id,title,description,status,due_date,assigned_to,created_at,profiles(full_name)").order("created_at", { ascending: false });
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { data: [], error: "Oturum bulunamadı." };
+  const { data: profile } = await supabase.from("profiles").select("role,active").eq("id", user.id).maybeSingle();
+  let query = supabase.from("tasks").select("id,title,description,status,due_date,assigned_to,created_at,assignee:profiles!tasks_assigned_to_fkey(full_name)").order("created_at", { ascending: false });
+  if (profile?.active && profile.role === "sales") query = query.eq("assigned_to", user.id);
+  const result = await query;
+  return { data: result.data ?? [], error: result.error?.message ?? null };
+}
+
+export async function getNotifications() {
+  if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
+  const result = await (await createClient()).from("notifications").select("id,read,created_at,orders(order_no,customers(name),manual_total,order_items(qty,price))").eq("read", false).order("created_at", { ascending: false }).limit(20);
   return { data: result.data ?? [], error: result.error?.message ?? null };
 }

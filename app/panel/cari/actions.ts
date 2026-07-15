@@ -40,8 +40,9 @@ export async function createPayment(formData: FormData) {
   const supabase = await createClient();
   const amount = Number(formData.get("amount") ?? 0);
   const customerId = String(formData.get("customer_id") ?? "");
+  const orderId = String(formData.get("order_id") ?? "") || null;
   if (!customerId || !Number.isFinite(amount) || amount <= 0) throw new Error("Geçerli bir tahsilat tutarı girin.");
-  const { error } = await supabase.from("payments").insert({ customer_id: customerId, amount, method: String(formData.get("method") ?? "Havale"), note: String(formData.get("note") ?? "").trim() });
+  const { error } = await supabase.from("payments").insert({ customer_id: customerId, order_id: orderId, amount, method: String(formData.get("method") ?? "Havale"), note: String(formData.get("note") ?? "").trim() });
   if (error) throw new Error(error.message);
   revalidatePath("/panel/cari");
   revalidatePath("/panel");
