@@ -27,7 +27,7 @@ export async function getCustomerProducts(slug: string) {
   const customer = await supabase.from("customers").select("id,name,link_slug").eq("link_slug", slug).eq("active", true).maybeSingle();
   if (customer.error || !customer.data) return { customer: null, products: [], error: customer.error?.message ?? "Müşteri bulunamadı" };
   const [products, prices] = await Promise.all([
-    supabase.from("products").select("id,name,sku,category,brand,unit,price,image_url").eq("active", true).order("name"),
+    supabase.from("products").select("id,name,sku,category,brand,unit,price,image_url,sort_order").eq("active", true).order("sort_order", { ascending: true }).order("name", { ascending: true }),
     supabase.from("product_prices").select("product_id,price").eq("customer_id", customer.data.id),
   ]);
   const priceMap = new Map((prices.data ?? []).map((row) => [row.product_id, Number(row.price)]));
@@ -37,7 +37,7 @@ export async function getCustomerProducts(slug: string) {
 export async function getProducts() {
   if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
   const supabase = await createClient();
-  const result = await supabase.from("products").select("id,name,barcode,sku,category,brand,supplier_id,unit,price,cost,critical_level,active,image_url,product_prices(customer_id,price)").order("name");
+  const result = await supabase.from("products").select("id,name,barcode,sku,category,subcategory,brand,supplier_id,unit,price,cost,critical_level,active,image_url,sort_order,product_prices(customer_id,price),cost_history(id,cost,changed_at)").order("sort_order", { ascending: true }).order("name", { ascending: true });
   return { data: result.data ?? [], error: result.error?.message ?? null };
 }
 
@@ -51,7 +51,7 @@ export async function getSuppliers() {
 export async function getOrders() {
   if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
   const supabase = await createClient();
-  const result = await supabase.from("orders").select("id,order_no,status,note,discount,manual_total,customer_id,created_at,customers(name),order_items(id,qty,price,products(name,sku,cost,supplier_id,suppliers(name)))").order("created_at", { ascending: false });
+  const result = await supabase.from("orders").select("id,order_no,status,note,discount,manual_total,customer_id,created_at,customers(name),order_items(id,qty,price,products(name,sku,cost,supplier_id,sort_order,suppliers(name)))").order("created_at", { ascending: false });
   return { data: result.data ?? [], error: result.error?.message ?? null };
 }
 
@@ -77,6 +77,29 @@ export async function getStockOptions() {
     supabase.from("warehouses").select("id,name").eq("active", true).order("name"),
   ]);
   return { products: products.data ?? [], warehouses: warehouses.data ?? [], error: products.error?.message ?? warehouses.error?.message ?? null };
+}
+
+export async function getStockMovements() {
+  if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
+  const result = await (await createClient()).from("stock_movements").select("id,type,qty,ref,created_at,products(name,sku),from_warehouse,to_warehouse").order("created_at", { ascending: false }).limit(100);
+  return { data: result.data ?? [], error: result.error?.message ?? null };
+}
+
+export async function getActivityLogs() {
+  if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
+  const supabase = await createClient();
+  const [orders, stock, payments] = await Promise.all([
+    supabase.from("order_logs").select("id,text,created_at,orders(order_no),profiles(full_name)").order("created_at", { ascending: false }).limit(100),
+    supabase.from("stock_movements").select("id,type,qty,ref,created_at,products(name),profiles(full_name)").order("created_at", { ascending: false }).limit(100),
+    supabase.from("payments").select("id,amount,method,note,created_at,customers(name),profiles(full_name)").order("created_at", { ascending: false }).limit(100),
+  ]);
+  const one = (value: unknown) => (Array.isArray(value) ? value[0] : value) as { full_name?: string; order_no?: string; name?: string } | null;
+  const data = [
+    ...(orders.data ?? []).map((row) => ({ id: `order-${row.id}`, type: "Sipariş", text: row.text, created_at: row.created_at, actor: one(row.profiles)?.full_name, ref: one(row.orders)?.order_no })),
+    ...(stock.data ?? []).map((row) => ({ id: `stock-${row.id}`, type: `Stok ${row.type}`, text: `${row.qty} adet · ${row.ref || ""}`, created_at: row.created_at, actor: one(row.profiles)?.full_name, ref: one(row.products)?.name })),
+    ...(payments.data ?? []).map((row) => ({ id: `payment-${row.id}`, type: "Tahsilat", text: `₺${Number(row.amount).toFixed(2)} · ${row.method}${row.note ? ` · ${row.note}` : ""}`, created_at: row.created_at, actor: one(row.profiles)?.full_name, ref: one(row.customers)?.name })),
+  ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 200);
+  return { data, error: orders.error?.message ?? stock.error?.message ?? payments.error?.message ?? null };
 }
 
 export async function getReportsData() {
@@ -108,5 +131,11 @@ export async function getProfiles() {
   if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
   const supabase = await createClient();
   const result = await supabase.from("profiles").select("id,full_name,role,active,created_at").order("created_at");
+  return { data: result.data ?? [], error: result.error?.message ?? null };
+}
+
+export async function getTasks() {
+  if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
+  const result = await (await createClient()).from("tasks").select("id,title,description,status,due_date,assigned_to,created_at,profiles(full_name)").order("created_at", { ascending: false });
   return { data: result.data ?? [], error: result.error?.message ?? null };
 }

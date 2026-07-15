@@ -3,8 +3,8 @@ import PanelShell from "./PanelShell";
 
 const navigation = [
   ["Operasyon", [["/panel", "▦", "Panel", "sales"], ["/panel/siparisler", "↗", "Siparişler", "sales"], ["/panel/cari", "▣", "Cari & Tahsilat", "sales"]]],
-  ["Envanter", [["/panel/urunler", "□", "Ürünler", "admin"], ["/panel/stok", "⌂", "Stok & Depo", "admin"]]],
-  ["Yönetim", [["/panel/tedarikciler", "◫", "Tedarikçiler", "admin"], ["/panel/raporlar", "◒", "Raporlar", "admin"], ["/panel/ayarlar", "⚙", "Ayarlar", "super_admin"]]],
+  ["Envanter", [["/panel/urunler", "□", "Ürünler", "admin"], ["/panel/urunler/siralama", "↕", "Ürün Sıralaması", "admin"], ["/panel/stok", "⌂", "Stok & Depo", "admin"]]],
+  ["Yönetim", [["/panel/tedarikciler", "◫", "Tedarikçiler", "admin"], ["/panel/raporlar", "◒", "Raporlar", "admin"], ["/panel/gecmis", "◷", "İşlem Geçmişi", "admin"], ["/panel/gorevler", "✓", "Görevler", "admin"], ["/panel/ayarlar", "⚙", "Ayarlar", "super_admin"]]],
 ] as const;
 const roleRank = { sales: 1, admin: 2, super_admin: 3 };
 

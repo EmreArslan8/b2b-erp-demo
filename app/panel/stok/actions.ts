@@ -3,6 +3,25 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "../../../lib/supabase/server";
 
+export async function createWarehouse(formData: FormData) {
+  const supabase = await createClient();
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) throw new Error("Depo adı zorunludur.");
+  const { error } = await supabase.from("warehouses").insert({ name });
+  if (error) throw new Error(error.message);
+  revalidatePath("/panel/stok");
+}
+
+export async function updateWarehouse(formData: FormData) {
+  const supabase = await createClient();
+  const id = String(formData.get("id") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+  if (!id || !name) throw new Error("Depo bilgileri eksik.");
+  const { error } = await supabase.from("warehouses").update({ name }).eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/panel/stok");
+}
+
 export async function createStockMovement(formData: FormData) {
   const supabase = await createClient();
   const type = String(formData.get("type") ?? "");
