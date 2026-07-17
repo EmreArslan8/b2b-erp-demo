@@ -1,5 +1,36 @@
-import { getCurrentProfile, getProfiles } from "../../../lib/supabase/queries";
-import { updateProfileRole } from "./actions";
+import { getBrandName, getCurrentProfile, getProfiles } from "../../../lib/supabase/queries";
+import { isServiceRoleConfigured } from "../../../lib/supabase/service";
+import { createUser, deleteUser, updateBrandName, updateUser } from "./actions";
+import BrandSettings from "./BrandSettings";
 import RoleManager from "./RoleManager";
 
-export default async function SettingsPage() { const [profile, profiles] = await Promise.all([getCurrentProfile(), getProfiles()]); const roleLabel = profile.data?.role === "super_admin" ? "Süper Admin" : profile.data?.role === "admin" ? "Admin" : "Satış Personeli"; return <section><div className="crumb">Yönetim</div><h2 style={{ marginBottom: 16 }}>Ayarlar</h2><div className="card card-pad"><h3>Aktif kullanıcı</h3><div className="settings-user"><div><b>{profile.data?.full_name || "Kullanıcı"}</b><p className="sub">{profile.data?.active ? "Aktif hesap" : "Pasif hesap"}</p></div><span className="pill">{roleLabel}</span></div><p className="sub" style={{ marginTop: 16 }}>Ürün silme, sipariş silme ve rol değişiklikleri Supabase RLS politikalarıyla korunur. Süper Admin olmayan kullanıcılar sipariş silemez.</p></div>{profiles.error ? <div className="card card-pad" style={{ marginTop: 14 }}><div className="empty">{profiles.error}</div></div> : <RoleManager profiles={profiles.data} action={updateProfileRole} canManage={profile.data?.role === "super_admin"} />}</section>; }
+const roleLabels: Record<string, string> = { super_admin: "Süper Admin", admin: "Admin", sales: "Satış Personeli" };
+
+export default async function SettingsPage() {
+  const [profile, profiles, brandName] = await Promise.all([getCurrentProfile(), getProfiles(), getBrandName()]);
+  const role = profile.data?.role ?? "sales";
+  const roleLabel = roleLabels[role] ?? "Satış Personeli";
+  const isSuperAdmin = role === "super_admin";
+  const canManageBrand = role === "super_admin" || role === "admin";
+
+  return <section>
+    <div className="section-head"><div><div className="crumb">Yönetim</div><h2>Ayarlar</h2></div></div>
+
+    <div className="card card-pad">
+      <div className="account-head">
+        <div>
+          <h3>Aktif hesap</h3>
+          <p className="sub">{profile.data?.full_name || "Kullanıcı"} · {profile.data?.active ? "Aktif" : "Pasif"}</p>
+        </div>
+        <span className="pill">{roleLabel}</span>
+      </div>
+      <p className="sub" style={{ marginTop: 14 }}>Ürün silme, sipariş silme ve rol değişiklikleri sunucu tarafı güvenlik kurallarıyla korunur. Kendi bilgilerinizi <b>Hesabım</b> sayfasından güncelleyebilirsiniz.</p>
+    </div>
+
+    <BrandSettings brandName={brandName} action={updateBrandName} canManage={canManageBrand} />
+
+    {isSuperAdmin && (profiles.error
+      ? <div className="card card-pad" style={{ marginTop: 14 }}><div className="empty">{profiles.error}</div></div>
+      : <RoleManager profiles={profiles.data} createAction={createUser} updateAction={updateUser} deleteAction={deleteUser} canManage={isSuperAdmin} serviceConfigured={isServiceRoleConfigured()} currentUserId={profile.data?.id ?? ""} />)}
+  </section>;
+}

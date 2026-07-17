@@ -95,6 +95,40 @@ export async function copyOrder(formData: FormData) {
   revalidatePath("/panel");
 }
 
+export async function createManualOrder(formData: FormData) {
+  const supabase = await createClient();
+  const customerId = String(formData.get("customer_id") ?? "");
+  const note = String(formData.get("note") ?? "").trim();
+  if (!customerId) throw new Error("Müşteri seçin.");
+  let items: { productId: string; qty: number }[];
+  try { items = JSON.parse(String(formData.get("items") ?? "[]")); } catch { throw new Error("Sipariş kalemleri okunamadı."); }
+  items = (items ?? []).filter((item) => item && typeof item.productId === "string" && Number(item.qty) > 0);
+  if (!items.length) throw new Error("En az bir ürün ekleyin.");
+
+  const productIds = [...new Set(items.map((item) => item.productId))];
+  const [products, prices] = await Promise.all([
+    supabase.from("products").select("id,price").in("id", productIds),
+    supabase.from("product_prices").select("product_id,price").eq("customer_id", customerId).in("product_id", productIds),
+  ]);
+  if (products.error) throw new Error(products.error.message);
+  if (prices.error) throw new Error(prices.error.message);
+  const basePrice = new Map((products.data ?? []).map((row) => [row.id, Number(row.price)]));
+  const customPrice = new Map((prices.data ?? []).map((row) => [row.product_id, Number(row.price)]));
+  for (const item of items) if (!basePrice.has(item.productId)) throw new Error("Seçilen ürünlerden biri bulunamadı.");
+
+  const orderNo = `SIP-${Date.now().toString(36).toUpperCase()}`;
+  const { data: { user } } = await supabase.auth.getUser();
+  const created = await supabase.from("orders").insert({ order_no: orderNo, customer_id: customerId, status: "Yeni Sipariş", note, created_by: user?.id ?? null }).select("id").single();
+  if (created.error || !created.data) throw new Error(created.error?.message ?? "Sipariş oluşturulamadı.");
+  const rows = items.map((item) => ({ order_id: created.data.id, product_id: item.productId, qty: Number(item.qty), price: customPrice.get(item.productId) ?? basePrice.get(item.productId) ?? 0 }));
+  const inserted = await supabase.from("order_items").insert(rows);
+  if (inserted.error) throw new Error(inserted.error.message);
+  await supabase.from("notifications").insert({ order_id: created.data.id });
+  await supabase.from("order_logs").insert({ order_id: created.data.id, text: `Manuel sipariş oluşturuldu (${rows.length} kalem).` });
+  revalidatePath("/panel/siparisler");
+  revalidatePath("/panel");
+}
+
 export async function updateOrderItem(formData: FormData) {
   const supabase = await createClient();
   const id = String(formData.get("id") ?? "");

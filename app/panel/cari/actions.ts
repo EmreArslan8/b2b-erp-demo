@@ -14,15 +14,30 @@ function slugify(value: string) {
   return value.toLocaleLowerCase("tr-TR").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ı/g, "i").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
+async function ensureUniqueSlug(supabase: Awaited<ReturnType<typeof createClient>>, base: string, excludeId?: string) {
+  const root = slugify(base) || "musteri";
+  let candidate = root;
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    let query = supabase.from("customers").select("id").eq("link_slug", candidate);
+    if (excludeId) query = query.neq("id", excludeId);
+    const { data } = await query.maybeSingle();
+    if (!data) return candidate;
+    candidate = `${root}-${Math.random().toString(36).slice(2, 6)}`;
+  }
+  return `${root}-${Date.now().toString(36)}`;
+}
+
 export async function createCustomer(formData: FormData) {
   const supabase = await createClient();
   const name = String(formData.get("name") ?? "").trim();
   const code = String(formData.get("code") ?? "").trim();
   if (!name || !code) throw new Error("Cari adı ve kodu zorunludur.");
-  const slug = `${slugify(name) || "musteri"}-${Date.now().toString(36)}`;
+  const requested = String(formData.get("link_slug") ?? "").trim();
+  const slug = await ensureUniqueSlug(supabase, requested || name);
   const { error } = await supabase.from("customers").insert({ code, name, contact: String(formData.get("contact") ?? "").trim(), phone: String(formData.get("phone") ?? "").trim(), link_slug: slug });
   if (error) throw new Error(error.message);
   revalidatePath("/panel/cari");
+  revalidatePath("/", "layout");
 }
 
 export async function updateCustomer(formData: FormData) {
@@ -31,9 +46,46 @@ export async function updateCustomer(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const code = String(formData.get("code") ?? "").trim();
   if (!id || !name || !code) throw new Error("Cari adı ve kodu zorunludur.");
-  const { error } = await supabase.from("customers").update({ code, name, contact: String(formData.get("contact") ?? "").trim(), phone: String(formData.get("phone") ?? "").trim() }).eq("id", id);
+  const requested = String(formData.get("link_slug") ?? "").trim();
+  const update: Record<string, string> = { code, name, contact: String(formData.get("contact") ?? "").trim(), phone: String(formData.get("phone") ?? "").trim() };
+  if (requested) update.link_slug = await ensureUniqueSlug(supabase, requested, id);
+  const { error } = await supabase.from("customers").update(update).eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/panel/cari");
+  revalidatePath("/", "layout");
+}
+
+export async function deleteCustomer(formData: FormData) {
+  const supabase = await createClient();
+  const id = String(formData.get("id") ?? "");
+  if (!id) throw new Error("Cari bulunamadı.");
+  await verifyPassword(supabase, String(formData.get("current_password") ?? ""));
+  const [orders, payments] = await Promise.all([
+    supabase.from("orders").select("id", { count: "exact", head: true }).eq("customer_id", id),
+    supabase.from("payments").select("id", { count: "exact", head: true }).eq("customer_id", id),
+  ]);
+  if (orders.error) throw new Error(orders.error.message);
+  if (payments.error) throw new Error(payments.error.message);
+  const hasHistory = (orders.count ?? 0) > 0 || (payments.count ?? 0) > 0;
+  if (hasHistory) {
+    const { error } = await supabase.from("customers").update({ active: false }).eq("id", id);
+    if (error) throw new Error(error.message);
+  } else {
+    const { error } = await supabase.from("customers").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+  }
+  revalidatePath("/panel/cari");
+  revalidatePath("/", "layout");
+}
+
+export async function reactivateCustomer(formData: FormData) {
+  const supabase = await createClient();
+  const id = String(formData.get("id") ?? "");
+  if (!id) throw new Error("Cari bulunamadı.");
+  const { error } = await supabase.from("customers").update({ active: true }).eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/panel/cari");
+  revalidatePath("/", "layout");
 }
 
 export async function createPayment(formData: FormData) {

@@ -1,3 +1,11 @@
 @import "../css/style.css";
 
-/* Next.js giriş noktası; mevcut TedarikPro tasarım sistemi korunur. */
+/* Next.js giriş noktası; mevcut tasarım sistemi korunur. */
+
+/* Marka renk konsepti: mavi. Ana vurgu rengi teal yerine mavi. */
+:root {
+  --accent: #2d6cc4;
+  --accent-2: #1f5aa8;
+  --accent-soft: #e5eefb;
+  --accent-line: #b8d0f0;
+}

@@ -1,7 +1,31 @@
+import { cache } from "react";
 import { createClient, isSupabaseConfigured } from "./server";
 
+export const DEFAULT_BRAND_NAME = "TedarikPro";
+
+type CategoryRow = { id: string; name: string; parent_id: string | null; active?: boolean; sort_order?: number };
+
+function categoryLabels(categoryId: string | null, categoryMap: Map<string, CategoryRow>) {
+  const selected = categoryId ? categoryMap.get(categoryId) : undefined;
+  if (!selected) return { category: "", subcategory: "" };
+  const parent = selected.parent_id ? categoryMap.get(selected.parent_id) : undefined;
+  return parent ? { category: parent.name, subcategory: selected.name } : { category: selected.name, subcategory: "" };
+}
+
+export const getBrandName = cache(async (): Promise<string> => {
+  if (!isSupabaseConfigured()) return DEFAULT_BRAND_NAME;
+  try {
+    const supabase = await createClient();
+    const result = await supabase.from("app_settings").select("value").eq("key", "brand_name").maybeSingle();
+    const value = result.data?.value?.trim();
+    return value || DEFAULT_BRAND_NAME;
+  } catch {
+    return DEFAULT_BRAND_NAME;
+  }
+});
+
 export async function getDashboardData() {
-  if (!isSupabaseConfigured()) return { connected: false, error: "Veri bağlantısı ayarları eksik. .env.example dosyasını .env.local olarak kopyalayın.", todayOrders: 0, openOrders: 0, customerCount: 0, critical: 0, paymentTotal: 0 };
+  if (!isSupabaseConfigured()) return { connected: false, error: "Veri bağlantısı kurulamadı. Lütfen sistem yöneticinizle iletişime geçin.", todayOrders: 0, openOrders: 0, customerCount: 0, critical: 0, paymentTotal: 0 };
   const supabase = await createClient();
   const [orders, customers, products, stock, payments] = await Promise.all([
     supabase.from("orders").select("id,status,created_at").order("created_at", { ascending: false }),
@@ -21,74 +45,120 @@ export async function getDashboardData() {
   return { connected: !error, error: error?.message ?? null, todayOrders: todayOrders.length, openOrders: openOrders.length, customerCount: customers.count ?? 0, critical, paymentTotal: (payments.data ?? []).reduce((sum, row) => sum + Number(row.amount), 0) };
 }
 
+export async function getCustomerLinks() {
+  if (!isSupabaseConfigured()) return { data: [], error: "Veri bağlantısı ayarları eksik." };
+  const result = await (await createClient()).from("customers").select("id,name,link_slug").eq("active", true).order("name");
+  return { data: result.data ?? [], error: result.error?.message ?? null };
+}
+
 export async function getCustomerProducts(slug: string) {
-  if (!isSupabaseConfigured()) return { customer: null, products: [], error: "Veri bağlantısı ayarları eksik. .env.example dosyasını .env.local olarak kopyalayın." };
+  if (!isSupabaseConfigured()) return { customer: null, products: [], error: "Veri bağlantısı kurulamadı. Lütfen sistem yöneticinizle iletişime geçin." };
   const supabase = await createClient();
   const customer = await supabase.from("customers").select("id,name,link_slug").eq("link_slug", slug).eq("active", true).maybeSingle();
   if (customer.error || !customer.data) return { customer: null, products: [], error: customer.error?.message ?? "Müşteri bulunamadı" };
-  const [products, prices] = await Promise.all([
-    supabase.from("products").select("id,name,sku,category,brand,unit,price,image_url,sort_order").eq("active", true).order("sort_order", { ascending: true }).order("name", { ascending: true }),
+  const [products, prices, categories] = await Promise.all([
+    supabase.from("products").select("id,name,sku,category_id,brand,unit,price,image_url,sort_order").eq("active", true).order("sort_order", { ascending: true }).order("name", { ascending: true }),
     supabase.from("product_prices").select("product_id,price").eq("customer_id", customer.data.id),
+    supabase.from("categories").select("id,name,parent_id").eq("active", true),
   ]);
   const priceMap = new Map((prices.data ?? []).map((row) => [row.product_id, Number(row.price)]));
-  return { customer: customer.data, products: (products.data ?? []).map((product) => ({ ...product, price: priceMap.get(product.id) ?? Number(product.price) })), error: products.error?.message ?? prices.error?.message ?? null };
+  const categoryMap = new Map((categories.data ?? []).map((row) => [row.id, row as CategoryRow]));
+  return { customer: customer.data, products: (products.data ?? []).map((product) => ({ ...product, ...categoryLabels(product.category_id, categoryMap), price: priceMap.get(product.id) ?? Number(product.price) })), error: products.error?.message ?? prices.error?.message ?? categories.error?.message ?? null };
 }
 
 export async function getProducts() {
   if (!isSupabaseConfigured()) return { data: [], error: "Veri bağlantısı ayarları eksik." };
   const supabase = await createClient();
-  const result = await supabase.from("products").select("id,name,barcode,sku,category,subcategory,brand,supplier_id,unit,price,cost,critical_level,active,image_url,sort_order,product_prices(customer_id,price),cost_history(id,cost,changed_at)").order("sort_order", { ascending: true }).order("name", { ascending: true });
+  const [result, categories] = await Promise.all([
+    supabase.from("products").select("id,name,barcode,sku,category_id,brand,supplier_id,unit,price,cost,critical_level,active,image_url,sort_order,product_prices(customer_id,price),cost_history(id,cost,changed_at)").order("sort_order", { ascending: true }).order("name", { ascending: true }),
+    supabase.from("categories").select("id,name,parent_id,active,sort_order").order("sort_order").order("name"),
+  ]);
+  const categoryMap = new Map((categories.data ?? []).map((row) => [row.id, row as CategoryRow]));
+  return { data: (result.data ?? []).map((product) => ({ ...product, ...categoryLabels(product.category_id, categoryMap) })), error: result.error?.message ?? categories.error?.message ?? null };
+}
+
+export async function getCategoryOptions() {
+  if (!isSupabaseConfigured()) return { data: [], error: "Veri bağlantısı ayarları eksik." };
+  const result = await (await createClient()).from("categories").select("id,name,parent_id,active,sort_order").eq("active", true).order("sort_order").order("name");
   return { data: result.data ?? [], error: result.error?.message ?? null };
 }
 
+export async function getCategories() {
+  if (!isSupabaseConfigured()) return { data: [], error: "Veri bağlantısı ayarları eksik." };
+  const supabase = await createClient();
+  const [categories, products] = await Promise.all([
+    supabase.from("categories").select("id,name,parent_id,active,sort_order").order("sort_order").order("name"),
+    supabase.from("products").select("category_id,active"),
+  ]);
+  if (categories.error || products.error) return { data: [], error: categories.error?.message ?? products.error?.message ?? "Kategoriler alınamadı." };
+  const rows = (categories.data ?? []) as CategoryRow[];
+  const children = new Map<string, CategoryRow[]>();
+  rows.filter((row) => row.parent_id).forEach((row) => children.set(row.parent_id!, [...(children.get(row.parent_id!) ?? []), row]));
+  const productRows = products.data ?? [];
+  const data = rows.filter((row) => !row.parent_id).map((category) => {
+    const childRows = children.get(category.id) ?? [];
+    const ids = new Set([category.id, ...childRows.map((child) => child.id)]);
+    const related = productRows.filter((product) => product.category_id && ids.has(product.category_id));
+    return { id: category.id, name: category.name, total: related.length, active: related.filter((product) => product.active !== false).length, subcategories: childRows.map((child) => child.name).sort((a, b) => a.localeCompare(b, "tr-TR")) };
+  });
+  return { data, error: null };
+}
+
 export async function getSuppliers() {
-  if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
+  if (!isSupabaseConfigured()) return { data: [], error: "Veri bağlantısı ayarları eksik." };
   const supabase = await createClient();
   const result = await supabase.from("suppliers").select("id,name,contact,phone,email,products(id,name,sku,cost,price,active)").order("name");
   return { data: result.data ?? [], error: result.error?.message ?? null };
 }
 
 export async function getSupplierOptions() {
-  if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
+  if (!isSupabaseConfigured()) return { data: [], error: "Veri bağlantısı ayarları eksik." };
   const result = await (await createClient()).from("suppliers").select("id,name").order("name");
   return { data: result.data ?? [], error: result.error?.message ?? null };
 }
 
 export async function getOrders() {
-  if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
+  if (!isSupabaseConfigured()) return { data: [], error: "Veri bağlantısı ayarları eksik." };
   const supabase = await createClient();
   const result = await supabase.from("orders").select("id,order_no,status,note,discount,manual_total,customer_id,created_at,customers(name),order_items(id,qty,price,products(name,sku,cost,supplier_id,sort_order,suppliers(name)))").order("created_at", { ascending: false });
   return { data: result.data ?? [], error: result.error?.message ?? null };
 }
 
+export async function getOrder(id: string) {
+  if (!isSupabaseConfigured()) return { data: null, error: "Veri bağlantısı ayarları eksik." };
+  const supabase = await createClient();
+  const result = await supabase.from("orders").select("id,order_no,status,note,discount,manual_total,customer_id,created_at,customers(name),order_items(id,qty,price,products(name,sku,cost,supplier_id,sort_order,suppliers(name)))").eq("id", id).maybeSingle();
+  return { data: result.data, error: result.error?.message ?? null };
+}
+
 export async function getCustomers() {
-  if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
+  if (!isSupabaseConfigured()) return { data: [], error: "Veri bağlantısı ayarları eksik." };
   const supabase = await createClient();
   const result = await supabase.from("customers").select("id,code,name,contact,phone,link_slug,active,orders(id,order_no,manual_total,discount,order_items(qty,price)),payments(id,order_id,amount,method,note,created_at)").order("name");
   return { data: result.data ?? [], error: result.error?.message ?? null };
 }
 
 export async function getCustomerOptions() {
-  if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
+  if (!isSupabaseConfigured()) return { data: [], error: "Veri bağlantısı ayarları eksik." };
   const result = await (await createClient()).from("customers").select("id,name").eq("active", true).order("name");
   return { data: result.data ?? [], error: result.error?.message ?? null };
 }
 
 export async function getStock() {
-  if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
+  if (!isSupabaseConfigured()) return { data: [], error: "Veri bağlantısı ayarları eksik." };
   const supabase = await createClient();
   const result = await supabase.from("product_stock").select("product_id,warehouse_id,quantity,products(name,sku,critical_level),warehouses(name)").order("quantity");
   return { data: result.data ?? [], error: result.error?.message ?? null };
 }
 
 export async function getStockTotals() {
-  if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
+  if (!isSupabaseConfigured()) return { data: [], error: "Veri bağlantısı ayarları eksik." };
   const result = await (await createClient()).from("product_stock").select("product_id,quantity");
   return { data: result.data ?? [], error: result.error?.message ?? null };
 }
 
 export async function getStockOptions() {
-  if (!isSupabaseConfigured()) return { products: [], warehouses: [], error: "Supabase ayarları eksik." };
+  if (!isSupabaseConfigured()) return { products: [], warehouses: [], error: "Veri bağlantısı ayarları eksik." };
   const supabase = await createClient();
   const [products, warehouses] = await Promise.all([
     supabase.from("products").select("id,name,sku,unit").eq("active", true).order("name"),
@@ -98,13 +168,13 @@ export async function getStockOptions() {
 }
 
 export async function getStockMovements() {
-  if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
+  if (!isSupabaseConfigured()) return { data: [], error: "Veri bağlantısı ayarları eksik." };
   const result = await (await createClient()).from("stock_movements").select("id,type,qty,ref,created_at,products(name,sku),from_warehouse,to_warehouse").order("created_at", { ascending: false }).limit(100);
   return { data: result.data ?? [], error: result.error?.message ?? null };
 }
 
 export async function getActivityLogs() {
-  if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
+  if (!isSupabaseConfigured()) return { data: [], error: "Veri bağlantısı ayarları eksik." };
   const supabase = await createClient();
   const [orders, stock, payments] = await Promise.all([
     supabase.from("order_logs").select("id,text,created_at,orders(order_no),profiles(full_name)").order("created_at", { ascending: false }).limit(100),
@@ -121,7 +191,7 @@ export async function getActivityLogs() {
 }
 
 export async function getReportsData() {
-  if (!isSupabaseConfigured()) return { error: "Supabase ayarları eksik.", sales: { daily: 0, monthly: 0 }, payments: 0, profit: 0, products: [], customers: [], suppliers: [], critical: [] };
+  if (!isSupabaseConfigured()) return { error: "Veri bağlantısı ayarları eksik.", sales: { daily: 0, monthly: 0 }, payments: 0, profit: 0, products: [], customers: [], suppliers: [], critical: [] };
   const supabase = await createClient();
   const [orders, payments, stock] = await Promise.all([
     supabase.from("orders").select("status,customer_id,created_at,manual_total,discount,customers(name),order_items(qty,price,products(name,cost,suppliers(name)))"),
@@ -146,14 +216,14 @@ export async function getCurrentProfile() {
 }
 
 export async function getProfiles() {
-  if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
+  if (!isSupabaseConfigured()) return { data: [], error: "Veri bağlantısı ayarları eksik." };
   const supabase = await createClient();
   const result = await supabase.from("profiles").select("id,full_name,role,active,created_at").order("created_at");
   return { data: result.data ?? [], error: result.error?.message ?? null };
 }
 
 export async function getTasks() {
-  if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
+  if (!isSupabaseConfigured()) return { data: [], error: "Veri bağlantısı ayarları eksik." };
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { data: [], error: "Oturum bulunamadı." };
@@ -165,7 +235,7 @@ export async function getTasks() {
 }
 
 export async function getNotifications() {
-  if (!isSupabaseConfigured()) return { data: [], error: "Supabase ayarları eksik." };
+  if (!isSupabaseConfigured()) return { data: [], error: "Veri bağlantısı ayarları eksik." };
   const result = await (await createClient()).from("notifications").select("id,read,created_at,orders(order_no,customers(name),manual_total,order_items(qty,price))").eq("read", false).order("created_at", { ascending: false }).limit(20);
   return { data: result.data ?? [], error: result.error?.message ?? null };
 }

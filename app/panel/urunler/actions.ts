@@ -3,6 +3,45 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "../../../lib/supabase/server";
 
+type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
+
+async function categoryPayload(supabase: SupabaseClient, formData: FormData) {
+  const selectedId = String(formData.get("subcategory_id") ?? "") || String(formData.get("parent_category_id") ?? "") || null;
+  if (!selectedId) return { category_id: null, category: "", subcategory: "" };
+  const selected = await supabase.from("categories").select("id,name,parent_id").eq("id", selectedId).maybeSingle();
+  if (selected.error || !selected.data) throw new Error(selected.error?.message ?? "Kategori bulunamadı.");
+  if (!selected.data.parent_id) return { category_id: selected.data.id, category: selected.data.name, subcategory: "" };
+  const parent = await supabase.from("categories").select("name").eq("id", selected.data.parent_id).maybeSingle();
+  if (parent.error || !parent.data) throw new Error(parent.error?.message ?? "Ana kategori bulunamadı.");
+  return { category_id: selected.data.id, category: parent.data.name, subcategory: selected.data.name };
+}
+
+async function ensureCategoryPath(supabase: SupabaseClient, categoryName: string, subcategoryName: string) {
+  const rootName = categoryName.trim();
+  if (!rootName) return { category_id: null, category: "", subcategory: "" };
+  let root = await supabase.from("categories").select("id,name").is("parent_id", null).ilike("name", rootName).limit(1).maybeSingle();
+  if (root.error) throw new Error(root.error.message);
+  if (!root.data) {
+    const created = await supabase.from("categories").insert({ name: rootName, parent_id: null }).select("id,name").single();
+    if (created.error || !created.data) throw new Error(created.error?.message ?? "Kategori oluşturulamadı.");
+    root = created;
+  }
+  const rootData = root.data;
+  if (!rootData) throw new Error("Kategori oluşturulamadı.");
+  const childName = subcategoryName.trim();
+  if (!childName) return { category_id: rootData.id, category: rootData.name, subcategory: "" };
+  let child = await supabase.from("categories").select("id,name").eq("parent_id", rootData.id).ilike("name", childName).limit(1).maybeSingle();
+  if (child.error) throw new Error(child.error.message);
+  if (!child.data) {
+    const created = await supabase.from("categories").insert({ name: childName, parent_id: rootData.id }).select("id,name").single();
+    if (created.error || !created.data) throw new Error(created.error?.message ?? "Alt kategori oluşturulamadı.");
+    child = created;
+  }
+  const childData = child.data;
+  if (!childData) throw new Error("Alt kategori oluşturulamadı.");
+  return { category_id: childData.id, category: rootData.name, subcategory: childData.name };
+}
+
 async function verifyPassword(supabase: Awaited<ReturnType<typeof createClient>>, password: string) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user?.email || !password) throw new Error("Silme işlemi için şifre doğrulaması gerekli.");
@@ -14,12 +53,12 @@ export async function createProduct(formData: FormData) {
   const supabase = await createClient();
   const { data: lastProduct } = await supabase.from("products").select("sort_order").order("sort_order", { ascending: false }).limit(1).maybeSingle();
   const supplierId = String(formData.get("supplier_id") ?? "") || null;
+  const category = await categoryPayload(supabase, formData);
   const { error } = await supabase.from("products").insert({
     name: String(formData.get("name") ?? "").trim(),
     barcode: String(formData.get("barcode") ?? "").trim(),
     sku: String(formData.get("sku") ?? "").trim(),
-    category: String(formData.get("category") ?? "").trim(),
-    subcategory: String(formData.get("subcategory") ?? "").trim(),
+    ...category,
     brand: String(formData.get("brand") ?? "").trim(),
     supplier_id: supplierId,
     unit: String(formData.get("unit") ?? "Adet"),
@@ -56,10 +95,22 @@ export async function importProducts(formData: FormData) {
     if (!name || !sku) continue;
     const cost = Number(column(values, ["son alış", "alış", "cost"]).replace(",", ".") || 0);
     const price = Number(column(values, ["satış", "satış fiyatı", "price"]).replace(",", ".") || 0);
-    const product = await supabase.from("products").upsert({ name, sku, barcode: column(values, ["barkod", "barcode"]), category: column(values, ["kategori", "category"]), subcategory: column(values, ["alt kategori", "subcategory"]), brand: column(values, ["marka", "brand"]), unit: column(values, ["birim", "unit"]) || "Adet", cost: Number.isFinite(cost) ? cost : 0, price: Number.isFinite(price) ? price : 0, critical_level: Number(column(values, ["kritik stok", "critical_level"]) || 0) || 0 }, { onConflict: "sku" }).select("id").single();
+    const category = await ensureCategoryPath(supabase, column(values, ["kategori", "category"]), column(values, ["alt kategori", "subcategory"]));
+    const product = await supabase.from("products").upsert({ name, sku, barcode: column(values, ["barkod", "barcode"]), ...category, brand: column(values, ["marka", "brand"]), unit: column(values, ["birim", "unit"]) || "Adet", cost: Number.isFinite(cost) ? cost : 0, price: Number.isFinite(price) ? price : 0, critical_level: Number(column(values, ["kritik stok", "critical_level"]) || 0) || 0 }, { onConflict: "sku" }).select("id").single();
     if (product.error || !product.data) throw new Error(product.error?.message ?? `${sku} ürünü içe aktarılamadı.`);
     await supabase.from("cost_history").insert({ product_id: product.data.id, cost: Number.isFinite(cost) ? cost : 0 });
   }
+  revalidatePath("/panel/urunler");
+  revalidatePath("/siparis/[slug]", "page");
+}
+
+export async function toggleProductActive(formData: FormData) {
+  const supabase = await createClient();
+  const id = String(formData.get("id") ?? "");
+  const active = String(formData.get("active") ?? "") === "true";
+  if (!id) throw new Error("Ürün bulunamadı.");
+  const { error } = await supabase.from("products").update({ active, updated_at: new Date().toISOString() }).eq("id", id);
+  if (error) throw new Error(error.message);
   revalidatePath("/panel/urunler");
   revalidatePath("/siparis/[slug]", "page");
 }
@@ -102,12 +153,12 @@ export async function updateProduct(formData: FormData) {
   const previous = await supabase.from("products").select("cost").eq("id", id).maybeSingle();
   if (previous.error || !previous.data) throw new Error(previous.error?.message ?? "Ürün bulunamadı.");
   const cost = Number(formData.get("cost") ?? 0);
+  const category = await categoryPayload(supabase, formData);
   const { error } = await supabase.from("products").update({
     name: String(formData.get("name") ?? "").trim(),
     barcode: String(formData.get("barcode") ?? "").trim(),
     sku: String(formData.get("sku") ?? "").trim(),
-    category: String(formData.get("category") ?? "").trim(),
-    subcategory: String(formData.get("subcategory") ?? "").trim(),
+    ...category,
     brand: String(formData.get("brand") ?? "").trim(),
     supplier_id: String(formData.get("supplier_id") ?? "") || null,
     unit: String(formData.get("unit") ?? "Adet"),
