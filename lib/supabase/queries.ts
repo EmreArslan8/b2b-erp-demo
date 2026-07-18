@@ -105,10 +105,27 @@ export async function getCategories() {
 }
 
 export async function getSuppliers() {
-  if (!isSupabaseConfigured()) return { data: [], error: "Veri bağlantısı ayarları eksik." };
+  if (!isSupabaseConfigured()) return { data: [], error: "Veri bağlantısı ayarları eksik.", paymentsReady: false };
   const supabase = await createClient();
-  const result = await supabase.from("suppliers").select("id,name,contact,phone,email,products(id,name,sku,cost,price,active)").order("name");
-  return { data: result.data ?? [], error: result.error?.message ?? null };
+  const [result, items, payments] = await Promise.all([
+    supabase.from("suppliers").select("id,name,contact,phone,email,products(id,name,sku,cost,price,active)").order("name"),
+    supabase.from("order_items").select("qty,products(supplier_id,cost),orders!inner(status)").neq("orders.status", "İptal Edildi"),
+    supabase.from("supplier_payments").select("id,supplier_id,amount,method,note,created_at").order("created_at", { ascending: false }),
+  ]);
+  const debtBySupplier = new Map<string, number>();
+  (items.data ?? []).forEach((row) => {
+    const product = Array.isArray(row.products) ? row.products[0] : row.products;
+    if (!product?.supplier_id) return;
+    debtBySupplier.set(product.supplier_id, (debtBySupplier.get(product.supplier_id) ?? 0) + Number(row.qty) * Number(product.cost ?? 0));
+  });
+  const paymentsBySupplier = new Map<string, NonNullable<typeof payments.data>>();
+  (payments.data ?? []).forEach((payment) => {
+    const list = paymentsBySupplier.get(payment.supplier_id) ?? [];
+    list.push(payment);
+    paymentsBySupplier.set(payment.supplier_id, list);
+  });
+  const data = (result.data ?? []).map((supplier) => ({ ...supplier, debt: debtBySupplier.get(supplier.id) ?? 0, payments: paymentsBySupplier.get(supplier.id) ?? [] }));
+  return { data, error: result.error?.message ?? items.error?.message ?? null, paymentsReady: !payments.error };
 }
 
 export async function getSupplierOptions() {

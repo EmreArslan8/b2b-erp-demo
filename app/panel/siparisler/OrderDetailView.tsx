@@ -19,6 +19,8 @@ type SupplierRow = { name: string; qty: number; total: number; sort_order: numbe
 const pipelineStatuses = ["Yeni Sipariş", "Onaylandı", "Hazırlanıyor", "Tedarikçiye İletildi", "Hazır", "Teslim Edildi", "Tamamlandı"];
 const statusClasses: Record<string, string> = { "Yeni Sipariş": "st-new", "Onaylandı": "st-approved", "Hazırlanıyor": "st-prep", "Tedarikçiye İletildi": "st-supplier", "Hazır": "st-ready", "Teslim Edildi": "st-delivered", "Tamamlandı": "st-done", "İptal Edildi": "st-cancel" };
 
+const ALL_SUPPLIERS = "__all__";
+
 function first<T>(value: T | T[] | null): T | undefined { return Array.isArray(value) ? value[0] : value ?? undefined; }
 
 function OrderItemRow({ orderId, item, updateAction, deleteAction }: { orderId: string; item: Order["order_items"][number]; updateAction: Action; deleteAction: Action }) {
@@ -118,10 +120,11 @@ function OrderMetaForm({ order, action, manualAction }: { order: Order; action: 
   </form></>;
 }
 
-function SupplierPrint({ order, customerName, groups, active, brandName }: { order: Order; customerName: string; groups: Map<string, SupplierRow[]>; active: boolean; brandName: string }) {
-  const supplierCount = groups.size;
-  return <div className={`supplier-print ${active ? "print-active" : ""}`}>
-    {[...groups.entries()].map(([supplier, rows], index) => <section className="supplier-sheet" key={supplier}>
+function SupplierPrint({ order, customerName, groups, target, brandName }: { order: Order; customerName: string; groups: Map<string, SupplierRow[]>; target: string | null; brandName: string }) {
+  const printed = target === ALL_SUPPLIERS ? [...groups.keys()] : target ? [target] : [];
+  const supplierCount = printed.length;
+  return <div className={`supplier-print ${target ? "print-active" : ""}`}>
+    {[...groups.entries()].filter(([supplier]) => !target || printed.includes(supplier)).map(([supplier, rows], index) => <section className="supplier-sheet" key={supplier}>
       <div className="supplier-sheet-head">
         <div className="pdf-brand">{brandName}</div>
         <div className="supplier-sheet-meta"><b>{order.order_no}</b><span>{new Date(order.created_at).toLocaleDateString("tr-TR")}</span></div>
@@ -149,7 +152,7 @@ export default function OrderDetailView({ order, products, brandName, updateActi
   const customerName = first(order.customers)?.name ?? "—";
   const cancelled = order.status === "İptal Edildi";
   const [infoOpen, setInfoOpen] = useState(false);
-  const [printActive, setPrintActive] = useState(false);
+  const [printTarget, setPrintTarget] = useState<string | null>(null);
   const [statusPending, setStatusPending] = useState(false);
   const [statusMessage, setStatusMessage] = useState<State>(null);
   const [confirmConfig, setConfirmConfig] = useState<ConfirmConfig | null>(null);
@@ -182,7 +185,7 @@ export default function OrderDetailView({ order, products, brandName, updateActi
     void applyStatus(status);
   }
 
-  function printSupplier() { setPrintActive(true); window.setTimeout(() => { window.print(); window.setTimeout(() => setPrintActive(false), 300); }, 50); }
+  function printSupplier(target: string) { setPrintTarget(target); window.setTimeout(() => { window.print(); window.setTimeout(() => setPrintTarget(null), 300); }, 50); }
 
   function closeMenu(event: MouseEvent<HTMLButtonElement>) { event.currentTarget.closest("details")?.removeAttribute("open"); }
   function handleCopy(event: MouseEvent<HTMLButtonElement>) {
@@ -222,7 +225,8 @@ export default function OrderDetailView({ order, products, brandName, updateActi
       </div>
       <div className="order-toolbar-actions">
         <button type="button" className={`btn btn-ghost btn-sm${infoOpen ? " active" : ""}`} onClick={() => setInfoOpen((open) => !open)}><SlidersHorizontal size={15} /> Bilgiler</button>
-        <button type="button" className="btn btn-ghost btn-sm no-print" onClick={printSupplier}><Printer size={15} /> Yazdır</button>
+        {supplierGroups.size > 1 && [...supplierGroups.keys()].map((supplier) => <button key={supplier} type="button" className="btn btn-ghost btn-sm no-print" onClick={() => printSupplier(supplier)}><Printer size={15} /> {supplier}</button>)}
+        <button type="button" className="btn btn-ghost btn-sm no-print" onClick={() => printSupplier(ALL_SUPPLIERS)}><Printer size={15} /> {supplierGroups.size > 1 ? "Tümünü Yazdır" : "Yazdır"}</button>
         <details className="row-menu">
           <summary className="btn btn-ghost btn-sm row-menu-trigger" aria-label="Diğer işlemler"><MoreHorizontal size={16} /></summary>
           <div className="row-menu-pop">
@@ -250,7 +254,7 @@ export default function OrderDetailView({ order, products, brandName, updateActi
 
     <AddOrderItem orderId={order.id} customerId={order.customer_id} products={products} addAction={withRefresh(addItemAction)} />
     {order.note && <p className="order-note"><b>Not:</b> {order.note}</p>}
-    <SupplierPrint order={order} customerName={customerName} groups={supplierGroups} active={printActive} brandName={brandName} />
+    <SupplierPrint order={order} customerName={customerName} groups={supplierGroups} target={printTarget} brandName={brandName} />
     {confirmConfig && <ConfirmDialog config={confirmConfig} onClose={() => setConfirmConfig(null)} />}
   </section>;
 }
