@@ -489,32 +489,71 @@ details > summary.btn { display: inline-flex; cursor: pointer; user-select: none
 .order-info-panel { padding: 14px; margin-bottom: 16px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--surface); }
 .order-info-title { margin-bottom: 10px; color: var(--ink-3); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
 
-/* Ürün tablosu */
-.order-items-table { table-layout: fixed; font-size: 12px; }
-.order-items-table th {
-  padding: 8px 6px;
-  font-size: 9.5px;
-  line-height: 1.15;
-  letter-spacing: .045em;
-  white-space: normal;
-  vertical-align: bottom;
+/* Sipariş ürün kartları */
+.order-lines-panel { display: grid; gap: 12px; }
+.order-line-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
 }
-.order-items-table td { padding: 9px 6px; }
-.order-items-table th:nth-child(1), .order-items-table td:nth-child(1) { width: 16%; }
-.order-items-table th:nth-child(2), .order-items-table td:nth-child(2) { width: 8%; }
-.order-items-table th:nth-child(3), .order-items-table td:nth-child(3) { width: 10%; }
-.order-items-table th:nth-child(4), .order-items-table td:nth-child(4) { width: 12%; }
-.order-items-table th:nth-child(5), .order-items-table td:nth-child(5) { width: 10%; }
-.order-items-table th:nth-child(6), .order-items-table td:nth-child(6) { width: 11%; }
-.order-items-table th:nth-child(7), .order-items-table td:nth-child(7) { width: 8%; }
-.order-items-table th:nth-child(8), .order-items-table td:nth-child(8) { width: 8%; }
-.order-items-table th:nth-child(9), .order-items-table td:nth-child(9) { width: 8%; }
-.order-items-table th:nth-child(10), .order-items-table td:nth-child(10) { width: 8%; }
-.order-items-table th:nth-child(11), .order-items-table td:nth-child(11) { width: 7%; }
-.order-items-table .order-items-action-col { text-align: right; }
-.order-items-table td:first-child b { overflow-wrap: anywhere; }
-.order-items-table tfoot th { background: transparent; font-weight: 600; color: var(--ink-2); padding-top: 6px; padding-bottom: 6px; border: 0; }
-.order-items-table tfoot .order-grandtotal th { font-size: 15px; font-weight: 800; color: var(--ink); border-top: 2px solid var(--line-2); padding-top: 10px; }
+.order-line-main { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px; }
+.order-line-product { display: block; overflow: hidden; color: var(--ink); font-size: 17px; line-height: 1.25; text-overflow: ellipsis; }
+.order-line-edit-btn { min-width: 78px; }
+.order-line-metrics { display: grid; grid-template-columns: repeat(4, minmax(145px, 1fr)); gap: 8px; }
+.order-line-metric, .order-line-field {
+  display: grid;
+  align-content: center;
+  min-height: 70px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-sm);
+  background: #fbfcfd;
+}
+.order-line-metric span, .order-line-field span {
+  color: var(--ink-3);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: .055em;
+}
+.order-line-metric b {
+  margin-top: 5px;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 19px;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.order-line-metric small { margin-top: 3px; color: var(--ink-3); font-size: 12px; font-weight: 700; }
+.order-line-metric.stock-tone { border-color: #b8dec3; background: var(--green-soft); }
+.order-line-metric.supplier-tone { border-color: #bed2ee; background: var(--blue-soft); }
+.order-line-metric.profit-tone { border-color: #b8dec3; background: #f4fbf6; }
+.order-line-metric.loss-tone { border-color: #f0b8ba; background: var(--red-soft); }
+.order-line-metric.total-tone { border-color: #d7dde6; background: #f4f7fb; }
+.order-line-field .input { margin-top: 7px; width: 100%; max-width: none; text-align: left; }
+.order-line-source-select { width: min(240px, 100%); }
+.order-line-edit-grid { align-items: stretch; }
+.order-totals-panel {
+  display: grid;
+  justify-self: end;
+  width: min(460px, 100%);
+  margin-top: 14px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.order-totals-panel > div { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 7px 0; color: var(--ink-2); font-size: 13px; font-weight: 800; }
+.order-totals-panel b { color: var(--ink); font-family: var(--font-mono); font-size: 16px; font-variant-numeric: tabular-nums; }
+.order-totals-panel .order-grandtotal { margin-top: 5px; padding-top: 12px; border-top: 2px solid var(--line-2); color: var(--ink); font-size: 16px; }
+.order-totals-panel .order-grandtotal b { font-size: 24px; }
 .fulfillment-cell { display: grid; gap: 7px; min-width: 198px; }
 .fulfillment-source {
   display: inline-flex;
@@ -558,11 +597,24 @@ details > summary.btn { display: inline-flex; cursor: pointer; user-select: none
 .order-item-identity > b { display: block; overflow: hidden; text-overflow: ellipsis; }
 .order-item small { display: block; color: var(--ink-3); font-size: 12px; margin-top: 4px; }
 /* Satır içi ürün düzenleme */
-.order-item-editing { background: var(--accent-soft); }
+.order-item-editing { background: var(--accent-soft); border-color: var(--accent-line); }
 .order-item-input { width: 100%; max-width: 96px; margin-left: auto; padding: 6px 8px; font-size: 13px; text-align: right; }
 .order-item-edit-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; }
 .order-item-edit-actions .btn { padding: 6px 10px; font-size: 12px; }
 .order-item-edit-actions .form-error { flex-basis: 100%; margin: 4px 0 0; padding: 5px 8px; font-size: 11.5px; text-align: right; }
+@media (max-width: 1180px) {
+  .order-line-metrics { grid-template-columns: repeat(2, minmax(145px, 1fr)); }
+}
+@media (max-width: 640px) {
+  .order-line-card { padding: 13px; }
+  .order-line-main { grid-template-columns: minmax(0, 1fr); align-items: start; }
+  .order-line-edit-btn { width: 100%; }
+  .order-line-metrics { grid-template-columns: 1fr; }
+  .order-line-metric, .order-line-field { min-height: 64px; }
+  .order-line-metric b { font-size: 18px; }
+  .order-line-source-select { width: 100%; }
+  .order-totals-panel { width: 100%; }
+}
 .order-item-pricing { display: grid; justify-items: end; gap: 2px; text-align: right; }
 .order-item-pricing small { margin: 0; }
 .order-item-pricing small b { color: var(--ink-2); font-weight: 700; }
@@ -1216,7 +1268,7 @@ details > summary.btn { display: inline-flex; cursor: pointer; user-select: none
   body * { visibility: hidden; }
   .order-row:not(:has(.supplier-print.print-active)) { display: none !important; }
   .order-row:has(.supplier-print.print-active) { display: block !important; }
-  .order-row:has(.supplier-print.print-active) > summary, .order-row:has(.supplier-print.print-active) .order-items, .order-row:has(.supplier-print.print-active) .order-note, .order-row:has(.supplier-print.print-active) .supplier-actions, .order-row:has(.supplier-print.print-active) .order-detail-actions, .order-row:has(.supplier-print.print-active) .order-toolbar, .order-row:has(.supplier-print.print-active) .order-info-panel, .order-row:has(.supplier-print.print-active) .order-items-table, .order-row:has(.supplier-print.print-active) .order-add-item { display: none !important; }
+  .order-row:has(.supplier-print.print-active) > summary, .order-row:has(.supplier-print.print-active) .order-items, .order-row:has(.supplier-print.print-active) .order-note, .order-row:has(.supplier-print.print-active) .supplier-actions, .order-row:has(.supplier-print.print-active) .order-detail-actions, .order-row:has(.supplier-print.print-active) .order-toolbar, .order-row:has(.supplier-print.print-active) .order-info-panel, .order-row:has(.supplier-print.print-active) .order-items-table, .order-row:has(.supplier-print.print-active) .order-lines-panel, .order-row:has(.supplier-print.print-active) .order-totals-panel, .order-row:has(.supplier-print.print-active) .order-add-item { display: none !important; }
   .order-row:has(.supplier-print.print-active) .order-detail { display: block !important; margin: 0 !important; padding: 0 !important; border: 0 !important; background: #fff !important; }
   /* Ayrı sipariş detay sayfasında yazdırma: yalnızca tedarikçi adisyonu görünür. */
   body:has(.supplier-print.print-active) .order-page > *:not(.supplier-print) { display: none !important; }
