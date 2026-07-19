@@ -71,53 +71,36 @@ function OrderItemRow({ orderId, item, updateAction, fulfillmentAction, deleteAc
     try { await deleteAction(data); } catch (err) { setError(err instanceof Error ? err.message : "Silinemedi."); setPending(false); }
   }
 
-  const metric = (label: string, value: string | number, extra?: string, tone?: string) => <div className={`order-line-metric${tone ? ` ${tone}` : ""}`}>
-    <span>{label}</span>
-    <b>{value}</b>
-    {extra && <small>{extra}</small>}
-  </div>;
-
+  const identity = <td><b>{product?.name ?? "Ürün"}</b><br /><span className="sub mono">{product?.sku ?? ""}</span></td>;
   if (!editing) {
-    return <article className="order-line-card">
-      <div className="order-line-main">
-        <div>
-          <b className="order-line-product">{product?.name ?? "Ürün"}</b>
-          <span className="sub mono">{product?.sku ?? ""}</span>
-        </div>
+    return <tr>{identity}
+      <td className="num">{item.qty}</td>
+      <td className="num">{Number(item.available_at_order ?? 0)}</td>
+      <td>
         <span className={`fulfillment-source ${sourceClass(item.fulfillment_source ?? "Tedarikçi")}`}>{item.fulfillment_source ?? "Tedarikçi"}</span>
-        <button type="button" className="btn btn-ghost btn-sm order-line-edit-btn" onClick={startEdit}>Düzenle</button>
-      </div>
-      <div className="order-line-metrics">
-        {metric("Sipariş miktarı", item.qty)}
-        {metric("Depodaki satılabilir miktar", Number(item.available_at_order ?? 0))}
-        {metric("Depodan karşılanacak miktar", Number(item.warehouse_qty ?? 0), `Rezerve ${Number(item.reserved_qty ?? 0)}`, Number(item.warehouse_qty ?? 0) > 0 ? "stock-tone" : undefined)}
-        {metric("Tedarikçiden karşılanacak miktar", Number(item.supplier_qty ?? 0), undefined, Number(item.supplier_qty ?? 0) > 0 ? "supplier-tone" : undefined)}
-        {metric("Alış maliyeti", `₺${unitCost.toFixed(2)}`)}
-        {metric("Müşteri satış fiyatı", `₺${Number(item.price).toFixed(2)}`)}
-        {metric("Ürün kârı", `₺${productProfit.toFixed(2)}`, undefined, productProfit < 0 ? "loss-tone" : "profit-tone")}
-        {metric("Toplam", `₺${(Number(item.qty) * Number(item.price)).toFixed(2)}`, undefined, "total-tone")}
-      </div>
-    </article>;
+      </td>
+      <td className="num"><b>{Number(item.warehouse_qty ?? 0)}</b><div className="sub">Rezerve {Number(item.reserved_qty ?? 0)}</div></td>
+      <td className="num"><b>{Number(item.supplier_qty ?? 0)}</b></td>
+      <td className="num">₺{unitCost.toFixed(2)}</td>
+      <td className="num">₺{Number(item.price).toFixed(2)}</td>
+      <td className={`num ${productProfit < 0 ? "danger-text" : ""}`}>₺{productProfit.toFixed(2)}</td>
+      <td className="num"><b>₺{(Number(item.qty) * Number(item.price)).toFixed(2)}</b></td>
+      <td className="order-items-action-col"><button type="button" className="btn btn-ghost btn-sm" onClick={startEdit}>Düzenle</button></td>
+    </tr>;
   }
-  return <article className="order-line-card order-item-editing">
-    <div className="order-line-main">
-      <div>
-        <b className="order-line-product">{product?.name ?? "Ürün"}</b>
-        <span className="sub mono">{product?.sku ?? ""}</span>
-      </div>
-      <select className="input order-line-source-select" value={source} onChange={(event) => setSource(event.target.value)} disabled={deleteMode}>{fulfillmentSources.map((option) => <option key={option}>{option}</option>)}</select>
-    </div>
-    <div className="order-line-metrics order-line-edit-grid">
-      <label className="order-line-field"><span>Sipariş miktarı</span><input className="input order-item-input" type="number" min="0.01" step="0.01" value={qty} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setQty(event.target.value)} aria-label="Adet" disabled={deleteMode} /></label>
-      {metric("Depodaki satılabilir miktar", Number(item.available_at_order ?? 0))}
-      <label className="order-line-field"><span>Depodan karşılanacak miktar</span><input className="input order-item-input" type="number" min="0" step="0.01" value={warehouseQty} onChange={(event) => setWarehouseQty(event.target.value)} aria-label="Depodan karşılanacak miktar" disabled={deleteMode} /></label>
-      <label className="order-line-field"><span>Tedarikçiden karşılanacak miktar</span><input className="input order-item-input" type="number" min="0" step="0.01" value={supplierQty} onChange={(event) => setSupplierQty(event.target.value)} aria-label="Tedarikçiden karşılanacak miktar" disabled={deleteMode} /></label>
-      {metric("Alış maliyeti", `₺${unitCost.toFixed(2)}`)}
-      <label className="order-line-field"><span>Müşteri satış fiyatı</span><input className="input order-item-input" type="number" min="0" step="0.01" value={price} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setPrice(event.target.value)} aria-label="Birim satış" disabled={deleteMode} /></label>
-      {metric("Ürün kârı", `₺${productProfit.toFixed(2)}`, undefined, productProfit < 0 ? "loss-tone" : "profit-tone")}
-      {metric("Toplam", `₺${(Number(qty || 0) * Number(price || 0)).toFixed(2)}`, undefined, "total-tone")}
-    </div>
-    <div className="order-item-edit-actions">
+  return <tr className="order-item-editing">{identity}
+    <td className="num"><input className="input order-item-input" type="number" min="0.01" step="0.01" value={qty} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setQty(event.target.value)} aria-label="Adet" disabled={deleteMode} /></td>
+    <td className="num">{Number(item.available_at_order ?? 0)}</td>
+    <td>
+      <select className="input" value={source} onChange={(event) => setSource(event.target.value)} disabled={deleteMode}>{fulfillmentSources.map((option) => <option key={option}>{option}</option>)}</select>
+    </td>
+    <td className="num"><input className="input order-item-input" type="number" min="0" step="0.01" value={warehouseQty} onChange={(event) => setWarehouseQty(event.target.value)} aria-label="Depodan karşılanacak miktar" disabled={deleteMode} /></td>
+    <td className="num"><div className="fulfillment-edit-qty"><input className="input order-item-input" type="number" min="0" step="0.01" value={supplierQty} onChange={(event) => setSupplierQty(event.target.value)} aria-label="Tedarikçiden karşılanacak miktar" disabled={deleteMode} /><button type="button" className="btn btn-ghost btn-sm" onClick={saveFulfillment} disabled={pending || deleteMode}>Kaynak</button></div></td>
+    <td className="num">₺{unitCost.toFixed(2)}</td>
+    <td className="num"><input className="input order-item-input" type="number" min="0" step="0.01" value={price} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setPrice(event.target.value)} aria-label="Birim satış" disabled={deleteMode} /></td>
+    <td className={`num ${productProfit < 0 ? "danger-text" : ""}`}>₺{productProfit.toFixed(2)}</td>
+    <td className="num"><b>₺{(Number(qty || 0) * Number(price || 0)).toFixed(2)}</b></td>
+    <td className="order-items-action-col"><div className="order-item-edit-actions">
       {deleteMode ? <>
         <input className="input order-item-input" type="password" placeholder="Şifre" autoComplete="current-password" value={deletePassword} onChange={(event) => setDeletePassword(event.target.value)} aria-label="Mevcut şifreniz" autoFocus />
         <button type="button" className="btn btn-danger btn-sm" onClick={confirmDelete} disabled={pending}>{pending ? "…" : "Sil"}</button>
@@ -128,9 +111,8 @@ function OrderItemRow({ orderId, item, updateAction, fulfillmentAction, deleteAc
         <button type="button" className="btn btn-danger btn-sm order-item-remove" onClick={() => { setError(""); setDeleteMode(true); }} disabled={pending}>Sil</button>
       </>}
       {error && <span className="form-error">{error}</span>}
-      {!deleteMode && <button type="button" className="btn btn-ghost btn-sm" onClick={saveFulfillment} disabled={pending}>Karşılama kaydet</button>}
-    </div>
-  </article>;
+    </div></td>
+  </tr>;
 }
 
 function AddOrderItem({ orderId, customerId, products, addAction }: { orderId: string; customerId: string; products: Product[]; addAction: Action }) {
@@ -306,17 +288,18 @@ export default function OrderDetailView({ order, products, brandName, updateActi
 
     {infoOpen && <div className="order-info-panel"><div className="order-info-title">Sipariş bilgileri</div><OrderMetaForm order={order} action={withRefresh(updateDetailsAction)} manualAction={withRefresh(updateManualTotalAction)} /></div>}
 
-    <div className="order-lines-panel">
-      {order.order_items.map((item) => <OrderItemRow key={item.id} orderId={order.id} item={item} updateAction={withRefresh(updateItemAction)} fulfillmentAction={withRefresh(updateFulfillmentAction)} deleteAction={withRefresh(deleteItemAction)} />)}
-    </div>
-    <div className="order-totals-panel">
-      <div><span>Ara toplam</span><b>₺{subtotal.toFixed(2)}</b></div>
-      {discount > 0 && <div><span>İndirim</span><b>−₺{discount.toFixed(2)}</b></div>}
-      {order.manual_total != null && <div><span>Manuel toplam</span><b>₺{Number(order.manual_total).toFixed(2)}</b></div>}
-      <div><span>Brüt kâr</span><b className={grossProfit < 0 ? "danger-text" : ""}>₺{grossProfit.toFixed(2)}</b></div>
-      <div><span>Net kâr</span><b className={netProfit < 0 ? "danger-text" : ""}>₺{netProfit.toFixed(2)}</b></div>
-      <div className="order-grandtotal"><span>Genel Toplam</span><b>₺{total.toFixed(2)}</b></div>
-    </div>
+    <div className="card"><div className="tbl-wrap"><table className="tbl order-items-table">
+      <thead><tr><th>Ürün</th><th className="num">Sipariş miktarı</th><th className="num">Depodaki satılabilir miktar</th><th>Karşılama kaynağı</th><th className="num">Depodan karşılanacak miktar</th><th className="num">Tedarikçiden karşılanacak miktar</th><th className="num">Alış maliyeti</th><th className="num">Müşteri satış fiyatı</th><th className="num">Ürün kârı</th><th className="num">Toplam</th><th className="order-items-action-col"></th></tr></thead>
+      <tbody>{order.order_items.map((item) => <OrderItemRow key={item.id} orderId={order.id} item={item} updateAction={withRefresh(updateItemAction)} fulfillmentAction={withRefresh(updateFulfillmentAction)} deleteAction={withRefresh(deleteItemAction)} />)}</tbody>
+      <tfoot>
+        <tr><th colSpan={9} className="num">Ara toplam</th><th className="num">₺{subtotal.toFixed(2)}</th><th /></tr>
+        {discount > 0 && <tr><th colSpan={9} className="num">İndirim</th><th className="num">−₺{discount.toFixed(2)}</th><th /></tr>}
+        {order.manual_total != null && <tr><th colSpan={9} className="num">Manuel toplam</th><th className="num">₺{Number(order.manual_total).toFixed(2)}</th><th /></tr>}
+        <tr><th colSpan={9} className="num">Brüt kâr</th><th className={`num ${grossProfit < 0 ? "danger-text" : ""}`}>₺{grossProfit.toFixed(2)}</th><th /></tr>
+        <tr><th colSpan={9} className="num">Net kâr</th><th className={`num ${netProfit < 0 ? "danger-text" : ""}`}>₺{netProfit.toFixed(2)}</th><th /></tr>
+        <tr className="order-grandtotal"><th colSpan={9} className="num">Genel Toplam</th><th className="num">₺{total.toFixed(2)}</th><th /></tr>
+      </tfoot>
+    </table></div></div>
 
     <AddOrderItem orderId={order.id} customerId={order.customer_id} products={products} addAction={withRefresh(addItemAction)} />
     {order.note && <p className="order-note"><b>Not:</b> {order.note}</p>}
