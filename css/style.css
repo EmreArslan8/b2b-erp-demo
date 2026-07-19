@@ -494,6 +494,40 @@ details > summary.btn { display: inline-flex; cursor: pointer; user-select: none
 .order-items-table .order-items-action-col { width: 84px; text-align: right; }
 .order-items-table tfoot th { background: transparent; font-weight: 600; color: var(--ink-2); padding-top: 6px; padding-bottom: 6px; border: 0; }
 .order-items-table tfoot .order-grandtotal th { font-size: 15px; font-weight: 800; color: var(--ink); border-top: 2px solid var(--line-2); padding-top: 10px; }
+.fulfillment-cell { display: grid; gap: 7px; min-width: 198px; }
+.fulfillment-source {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 23px;
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 800;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+.fulfillment-source.own { background: var(--green-soft); color: var(--green); border-color: #b8dec3; }
+.fulfillment-source.split { background: var(--amber-soft); color: #9a5e08; border-color: #efd2a3; }
+.fulfillment-source.supplier { background: var(--blue-soft); color: var(--blue); border-color: #bed2ee; }
+.fulfillment-source.other { background: var(--violet-soft); color: var(--violet); border-color: #d5c9f3; }
+.fulfillment-metrics { display: grid; grid-template-columns: repeat(3, minmax(54px, 1fr)); gap: 4px; max-width: 230px; }
+.fulfillment-metrics > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 5px 7px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-sm);
+  background: #fbfcfd;
+}
+.fulfillment-metrics b { color: var(--ink); font-family: var(--font-mono); font-size: 13px; line-height: 1; font-variant-numeric: tabular-nums; }
+.fulfillment-metrics small { color: var(--ink-3); font-size: 10px; font-weight: 700; line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fulfillment-edit { display: grid; grid-template-columns: minmax(138px, 1fr) 72px 72px auto; align-items: center; gap: 5px; min-width: 340px; }
+.fulfillment-edit .input { min-width: 0; }
+.fulfillment-edit .order-item-input { max-width: none; padding-inline: 7px; }
 .order-detail-title { display: block; margin-bottom: 12px; color: var(--ink-3); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
 .order-items { display: grid; }
 .order-item { display: grid; grid-template-columns: minmax(0, 1fr) minmax(170px, auto); align-items: center; gap: 20px; min-height: 82px; padding: 13px 0; border-bottom: 1px solid var(--line-2); }
@@ -663,6 +697,26 @@ details > summary.btn { display: inline-flex; cursor: pointer; user-select: none
 .supplier-table .table-actions { gap: 5px; justify-content: flex-start; }
 .supplier-table .table-actions .btn { padding: 5px 8px; font-size: 12px; white-space: nowrap; }
 .supplier-table .supplier-name-cell b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.supplier-table-wrap { overflow-x: auto; }
+.card:has(.table-actions) .supplier-table { min-width: 980px; table-layout: fixed; }
+.card:has(.table-actions) .supplier-table th:nth-child(1), .card:has(.table-actions) .supplier-table td:nth-child(1) { width: 20%; }
+.card:has(.table-actions) .supplier-table th:nth-child(2), .card:has(.table-actions) .supplier-table td:nth-child(2) { width: 10%; }
+.card:has(.table-actions) .supplier-table th:nth-child(3), .card:has(.table-actions) .supplier-table td:nth-child(3) { width: 10%; }
+.card:has(.table-actions) .supplier-table th:nth-child(4), .card:has(.table-actions) .supplier-table td:nth-child(4) { width: 13%; }
+.card:has(.table-actions) .supplier-table th:nth-child(5), .card:has(.table-actions) .supplier-table td:nth-child(5) { width: 21%; }
+.card:has(.table-actions) .supplier-table th:last-child, .card:has(.table-actions) .supplier-table td:last-child { width: 26%; }
+.supplier-table .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.supplier-product-cell { padding-right: 18px !important; }
+.supplier-product-summary {
+  width: 100%;
+  min-width: 0;
+  justify-content: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.supplier-actions-cell { padding-left: 18px !important; }
+.supplier-actions-cell .table-actions { justify-content: flex-end; flex-wrap: nowrap; min-width: 236px; }
+.supplier-actions-cell .btn { min-width: 0; }
 .supplier-products { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line-2); }
 .supplier-products-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .supplier-product-list { display: grid; gap: 6px; margin-top: 12px; }

@@ -32,7 +32,7 @@ export async function getDashboardData() {
     supabase.from("customers").select("id", { count: "exact", head: true }),
     supabase.from("products").select("id,critical_level", { count: "exact" }).eq("active", true),
     supabase.from("product_stock").select("product_id,quantity"),
-    supabase.from("payments").select("amount"),
+    supabase.from("payments").select("amount,status"),
   ]);
   const error = [orders, customers, products, stock, payments].find((result) => result.error)?.error;
   const rows = orders.data ?? [];
@@ -42,7 +42,7 @@ export async function getDashboardData() {
   const stockByProduct = new Map<string, number>();
   (stock.data ?? []).forEach((row) => stockByProduct.set(row.product_id, (stockByProduct.get(row.product_id) ?? 0) + Number(row.quantity)));
   const critical = (products.data ?? []).filter((product) => (stockByProduct.get(product.id) ?? 0) <= Number(product.critical_level)).length;
-  return { connected: !error, error: error?.message ?? null, todayOrders: todayOrders.length, openOrders: openOrders.length, customerCount: customers.count ?? 0, critical, paymentTotal: (payments.data ?? []).reduce((sum, row) => sum + Number(row.amount), 0) };
+  return { connected: !error, error: error?.message ?? null, todayOrders: todayOrders.length, openOrders: openOrders.length, customerCount: customers.count ?? 0, critical, paymentTotal: (payments.data ?? []).filter((row) => row.status !== "İptal").reduce((sum, row) => sum + Number(row.amount), 0) };
 }
 
 export async function getCustomerLinks() {
@@ -107,25 +107,29 @@ export async function getCategories() {
 export async function getSuppliers() {
   if (!isSupabaseConfigured()) return { data: [], error: "Veri bağlantısı ayarları eksik.", paymentsReady: false };
   const supabase = await createClient();
-  const [result, items, payments] = await Promise.all([
-    supabase.from("suppliers").select("id,name,contact,phone,email,products(id,name,sku,cost,price,active)").order("name"),
-    supabase.from("order_items").select("qty,products(supplier_id,cost),orders!inner(status)").neq("orders.status", "İptal Edildi"),
-    supabase.from("supplier_payments").select("id,supplier_id,amount,method,note,created_at").order("created_at", { ascending: false }),
+  const [result, items, payments, supplierOrders] = await Promise.all([
+    supabase.from("suppliers").select("id,name,contact,phone,email,active,products(id,name,sku,cost,price,active)").neq("active", false).order("name"),
+    supabase.from("supplier_debts").select("supplier_id,amount"),
+    supabase.from("supplier_payments").select("id,supplier_id,amount,method,note,status,created_at").order("created_at", { ascending: false }),
+    supabase.from("supplier_order_items").select("id,supplier_id,qty,unit_cost,status,created_at,products(name,sku),orders(order_no,status)").order("created_at", { ascending: false }),
   ]);
   const debtBySupplier = new Map<string, number>();
-  (items.data ?? []).forEach((row) => {
-    const product = Array.isArray(row.products) ? row.products[0] : row.products;
-    if (!product?.supplier_id) return;
-    debtBySupplier.set(product.supplier_id, (debtBySupplier.get(product.supplier_id) ?? 0) + Number(row.qty) * Number(product.cost ?? 0));
-  });
+  (items.data ?? []).forEach((row) => debtBySupplier.set(row.supplier_id, (debtBySupplier.get(row.supplier_id) ?? 0) + Number(row.amount ?? 0)));
   const paymentsBySupplier = new Map<string, NonNullable<typeof payments.data>>();
-  (payments.data ?? []).forEach((payment) => {
+  (payments.data ?? []).filter((payment) => payment.status !== "İptal").forEach((payment) => {
     const list = paymentsBySupplier.get(payment.supplier_id) ?? [];
     list.push(payment);
     paymentsBySupplier.set(payment.supplier_id, list);
   });
-  const data = (result.data ?? []).map((supplier) => ({ ...supplier, debt: debtBySupplier.get(supplier.id) ?? 0, payments: paymentsBySupplier.get(supplier.id) ?? [] }));
-  return { data, error: result.error?.message ?? items.error?.message ?? null, paymentsReady: !payments.error };
+  const ordersBySupplier = new Map<string, NonNullable<typeof supplierOrders.data>>();
+  (supplierOrders.data ?? []).forEach((item) => {
+    if (!item.supplier_id) return;
+    const list = ordersBySupplier.get(item.supplier_id) ?? [];
+    list.push(item);
+    ordersBySupplier.set(item.supplier_id, list);
+  });
+  const data = (result.data ?? []).map((supplier) => ({ ...supplier, debt: debtBySupplier.get(supplier.id) ?? 0, payments: paymentsBySupplier.get(supplier.id) ?? [], supplier_orders: ordersBySupplier.get(supplier.id) ?? [] }));
+  return { data, error: result.error?.message ?? items.error?.message ?? supplierOrders.error?.message ?? null, paymentsReady: !payments.error };
 }
 
 export async function getSupplierOptions() {
@@ -137,21 +141,21 @@ export async function getSupplierOptions() {
 export async function getOrders() {
   if (!isSupabaseConfigured()) return { data: [], error: "Veri bağlantısı ayarları eksik." };
   const supabase = await createClient();
-  const result = await supabase.from("orders").select("id,order_no,status,note,discount,manual_total,customer_id,created_at,customers(name),order_items(id,qty,price,products(name,sku,cost,supplier_id,sort_order,suppliers(name)))").order("created_at", { ascending: false });
+  const result = await supabase.from("orders").select("id,order_no,status,note,discount,manual_total,shipping_cost,other_costs,customer_id,created_at,customers(name),order_items(id,qty,price,fulfillment_source,warehouse_qty,supplier_qty,reserved_qty,unit_cost,net_profit,products(name,sku,cost,average_cost,supplier_id,sort_order,suppliers(name)))").order("created_at", { ascending: false });
   return { data: result.data ?? [], error: result.error?.message ?? null };
 }
 
 export async function getOrder(id: string) {
   if (!isSupabaseConfigured()) return { data: null, error: "Veri bağlantısı ayarları eksik." };
   const supabase = await createClient();
-  const result = await supabase.from("orders").select("id,order_no,status,note,discount,manual_total,customer_id,created_at,customers(name),order_items(id,qty,price,products(name,sku,cost,supplier_id,sort_order,suppliers(name)))").eq("id", id).maybeSingle();
+  const result = await supabase.from("orders").select("id,order_no,status,note,discount,manual_total,shipping_cost,other_costs,customer_id,created_at,customers(name),order_items(id,qty,price,available_at_order,fulfillment_source,warehouse_qty,supplier_qty,reserved_qty,source_warehouse_id,unit_cost,net_profit,products(name,sku,cost,average_cost,supplier_id,sort_order,suppliers(name)))").eq("id", id).maybeSingle();
   return { data: result.data, error: result.error?.message ?? null };
 }
 
 export async function getCustomers() {
   if (!isSupabaseConfigured()) return { data: [], error: "Veri bağlantısı ayarları eksik." };
   const supabase = await createClient();
-  const result = await supabase.from("customers").select("id,code,name,contact,phone,link_slug,active,orders(id,order_no,manual_total,discount,order_items(qty,price)),payments(id,order_id,amount,method,note,created_at)").order("name");
+  const result = await supabase.from("customers").select("id,code,name,contact,phone,link_slug,active,orders(id,order_no,manual_total,discount,order_items(qty,price)),payments(id,order_id,amount,method,note,status,created_at)").order("name");
   return { data: result.data ?? [], error: result.error?.message ?? null };
 }
 
@@ -164,24 +168,25 @@ export async function getCustomerOptions() {
 export async function getStock() {
   if (!isSupabaseConfigured()) return { data: [], error: "Veri bağlantısı ayarları eksik." };
   const supabase = await createClient();
-  const result = await supabase.from("product_stock").select("product_id,warehouse_id,quantity,products(name,sku,critical_level),warehouses(name)").order("quantity");
+  const result = await supabase.from("product_stock").select("product_id,warehouse_id,quantity,reserved_quantity,incoming_quantity,products(name,sku,critical_level,min_stock_level,last_purchase_price,average_cost,cost),warehouses(name)").order("quantity");
   return { data: result.data ?? [], error: result.error?.message ?? null };
 }
 
 export async function getStockTotals() {
   if (!isSupabaseConfigured()) return { data: [], error: "Veri bağlantısı ayarları eksik." };
-  const result = await (await createClient()).from("product_stock").select("product_id,quantity");
+  const result = await (await createClient()).from("product_stock").select("product_id,quantity,reserved_quantity");
   return { data: result.data ?? [], error: result.error?.message ?? null };
 }
 
 export async function getStockOptions() {
   if (!isSupabaseConfigured()) return { products: [], warehouses: [], error: "Veri bağlantısı ayarları eksik." };
   const supabase = await createClient();
-  const [products, warehouses] = await Promise.all([
+  const [products, warehouses, suppliers] = await Promise.all([
     supabase.from("products").select("id,name,sku,unit").eq("active", true).order("name"),
     supabase.from("warehouses").select("id,name").eq("active", true).order("name"),
+    supabase.from("suppliers").select("id,name").order("name"),
   ]);
-  return { products: products.data ?? [], warehouses: warehouses.data ?? [], error: products.error?.message ?? warehouses.error?.message ?? null };
+  return { products: products.data ?? [], warehouses: warehouses.data ?? [], suppliers: suppliers.data ?? [], error: products.error?.message ?? warehouses.error?.message ?? suppliers.error?.message ?? null };
 }
 
 export async function getStockMovements() {
@@ -193,34 +198,36 @@ export async function getStockMovements() {
 export async function getActivityLogs() {
   if (!isSupabaseConfigured()) return { data: [], error: "Veri bağlantısı ayarları eksik." };
   const supabase = await createClient();
-  const [orders, stock, payments] = await Promise.all([
+  const [orders, stock, payments, audit] = await Promise.all([
     supabase.from("order_logs").select("id,text,created_at,orders(order_no),profiles(full_name)").order("created_at", { ascending: false }).limit(100),
     supabase.from("stock_movements").select("id,type,qty,ref,created_at,products(name),profiles(full_name)").order("created_at", { ascending: false }).limit(100),
-    supabase.from("payments").select("id,amount,method,note,created_at,customers(name),profiles(full_name)").order("created_at", { ascending: false }).limit(100),
+    supabase.from("payments").select("id,amount,method,note,status,created_at,customers(name),profiles(full_name)").order("created_at", { ascending: false }).limit(100),
+    supabase.from("audit_logs").select("id,entity_type,action,details,created_at,profiles(full_name)").order("created_at", { ascending: false }).limit(100),
   ]);
   const one = (value: unknown) => (Array.isArray(value) ? value[0] : value) as { full_name?: string; order_no?: string; name?: string } | null;
   const data = [
     ...(orders.data ?? []).map((row) => ({ id: `order-${row.id}`, type: "Sipariş", text: row.text, created_at: row.created_at, actor: one(row.profiles)?.full_name, ref: one(row.orders)?.order_no })),
     ...(stock.data ?? []).map((row) => ({ id: `stock-${row.id}`, type: `Stok ${row.type}`, text: `${row.qty} adet · ${row.ref || ""}`, created_at: row.created_at, actor: one(row.profiles)?.full_name, ref: one(row.products)?.name })),
-    ...(payments.data ?? []).map((row) => ({ id: `payment-${row.id}`, type: "Tahsilat", text: `₺${Number(row.amount).toFixed(2)} · ${row.method}${row.note ? ` · ${row.note}` : ""}`, created_at: row.created_at, actor: one(row.profiles)?.full_name, ref: one(row.customers)?.name })),
+    ...(payments.data ?? []).map((row) => ({ id: `payment-${row.id}`, type: row.status === "İptal" ? "Tahsilat iptali" : "Tahsilat", text: `₺${Number(row.amount).toFixed(2)} · ${row.method}${row.note ? ` · ${row.note}` : ""}`, created_at: row.created_at, actor: one(row.profiles)?.full_name, ref: one(row.customers)?.name })),
+    ...(audit.data ?? []).map((row) => ({ id: `audit-${row.id}`, type: "İşlem geçmişi", text: `${row.entity_type} · ${row.action}`, created_at: row.created_at, actor: one(row.profiles)?.full_name, ref: typeof row.details === "object" && row.details ? JSON.stringify(row.details) : "" })),
   ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 200);
-  return { data, error: orders.error?.message ?? stock.error?.message ?? payments.error?.message ?? null };
+  return { data, error: orders.error?.message ?? stock.error?.message ?? payments.error?.message ?? audit.error?.message ?? null };
 }
 
 export async function getReportsData() {
-  if (!isSupabaseConfigured()) return { error: "Veri bağlantısı ayarları eksik.", sales: { daily: 0, monthly: 0 }, payments: 0, profit: 0, products: [], customers: [], suppliers: [], critical: [] };
+  if (!isSupabaseConfigured()) return { error: "Veri bağlantısı ayarları eksik.", sales: { daily: 0, monthly: 0 }, payments: 0, profit: 0, netProfit: 0, products: [], customers: [], suppliers: [], critical: [] };
   const supabase = await createClient();
   const [orders, payments, stock] = await Promise.all([
-    supabase.from("orders").select("status,customer_id,created_at,manual_total,discount,customers(name),order_items(qty,price,products(name,cost,suppliers(name)))"),
-    supabase.from("payments").select("amount"),
+    supabase.from("orders").select("id,order_no,status,customer_id,created_at,manual_total,discount,shipping_cost,other_costs,customers(name),order_items(qty,price,warehouse_qty,supplier_qty,unit_cost,products(name,cost,average_cost,suppliers(name)))"),
+    supabase.from("payments").select("amount,status"),
     supabase.from("product_stock").select("quantity,products(name,sku,critical_level),warehouses(name)"),
   ]);
   const error = orders.error?.message ?? payments.error?.message ?? stock.error?.message ?? null;
   const now = new Date(); const today = now.toDateString(); const month = `${now.getFullYear()}-${now.getMonth()}`;
-  const products = new Map<string, { name: string; qty: number; sales: number; cost: number }>(); const customers = new Map<string, { name: string; sales: number }>(); const suppliers = new Map<string, { name: string; qty: number; cost: number }>(); let daily = 0; let monthly = 0; let profit = 0;
-  for (const order of orders.data ?? []) { if (order.status === "İptal Edildi") continue; const date = new Date(order.created_at); const customer = Array.isArray(order.customers) ? order.customers[0] : order.customers; let orderTotal = 0; for (const item of order.order_items ?? []) { const product = Array.isArray(item.products) ? item.products[0] : item.products; const qty = Number(item.qty); const sales = qty * Number(item.price); const cost = qty * Number(product?.cost ?? 0); orderTotal += sales; profit += sales - cost; const productRow = products.get(product?.name ?? "Ürün") ?? { name: product?.name ?? "Ürün", qty: 0, sales: 0, cost: 0 }; productRow.qty += qty; productRow.sales += sales; productRow.cost += cost; products.set(productRow.name, productRow); const supplier = Array.isArray(product?.suppliers) ? product?.suppliers[0] : product?.suppliers; const supplierRow = suppliers.get(supplier?.name ?? "Belirtilmemiş") ?? { name: supplier?.name ?? "Belirtilmemiş", qty: 0, cost: 0 }; supplierRow.qty += qty; supplierRow.cost += cost; suppliers.set(supplierRow.name, supplierRow); } const finalTotal = Number(order.manual_total ?? orderTotal - Number(order.discount ?? 0)); if (date.toDateString() === today) daily += finalTotal; if (`${date.getFullYear()}-${date.getMonth()}` === month) monthly += finalTotal; const customerRow = customers.get(order.customer_id) ?? { name: customer?.name ?? "Müşteri", sales: 0 }; customerRow.sales += finalTotal; customers.set(order.customer_id, customerRow); }
+  const products = new Map<string, { name: string; qty: number; sales: number; cost: number; grossProfit: number }>(); const customers = new Map<string, { name: string; sales: number; grossProfit: number; netProfit: number }>(); const suppliers = new Map<string, { name: string; qty: number; cost: number }>(); let daily = 0; let monthly = 0; let grossProfit = 0; let netProfit = 0;
+  for (const order of orders.data ?? []) { if (order.status === "İptal Edildi") continue; const date = new Date(order.created_at); const customer = Array.isArray(order.customers) ? order.customers[0] : order.customers; let orderTotal = 0; let orderGrossProfit = 0; for (const item of order.order_items ?? []) { const product = Array.isArray(item.products) ? item.products[0] : item.products; const qty = Number(item.qty); const sales = qty * Number(item.price); const unitCost = Number(item.unit_cost ?? product?.average_cost ?? product?.cost ?? 0); const cost = qty * unitCost; orderTotal += sales; orderGrossProfit += sales - cost; const productRow = products.get(product?.name ?? "Ürün") ?? { name: product?.name ?? "Ürün", qty: 0, sales: 0, cost: 0, grossProfit: 0 }; productRow.qty += qty; productRow.sales += sales; productRow.cost += cost; productRow.grossProfit += sales - cost; products.set(productRow.name, productRow); const supplier = Array.isArray(product?.suppliers) ? product?.suppliers[0] : product?.suppliers; if (Number(item.supplier_qty ?? 0) > 0) { const supplierRow = suppliers.get(supplier?.name ?? "Belirtilmemiş") ?? { name: supplier?.name ?? "Belirtilmemiş", qty: 0, cost: 0 }; supplierRow.qty += Number(item.supplier_qty); supplierRow.cost += Number(item.supplier_qty) * unitCost; suppliers.set(supplierRow.name, supplierRow); } } const finalTotal = Number(order.manual_total ?? orderTotal - Number(order.discount ?? 0)); const orderNetProfit = orderGrossProfit - Number(order.shipping_cost ?? 0) - Number(order.other_costs ?? 0) - Number(order.discount ?? 0); grossProfit += orderGrossProfit; netProfit += orderNetProfit; if (date.toDateString() === today) daily += finalTotal; if (`${date.getFullYear()}-${date.getMonth()}` === month) monthly += finalTotal; const customerRow = customers.get(order.customer_id) ?? { name: customer?.name ?? "Müşteri", sales: 0, grossProfit: 0, netProfit: 0 }; customerRow.sales += finalTotal; customerRow.grossProfit += orderGrossProfit; customerRow.netProfit += orderNetProfit; customers.set(order.customer_id, customerRow); }
   const critical = (stock.data ?? []).map((row) => { const product = Array.isArray(row.products) ? row.products[0] : row.products; const warehouse = Array.isArray(row.warehouses) ? row.warehouses[0] : row.warehouses; return { product: product?.name ?? "Ürün", warehouse: warehouse?.name ?? "Depo", quantity: Number(row.quantity), critical: Number(product?.critical_level ?? 0) }; }).filter((row) => row.quantity <= row.critical);
-  return { error, sales: { daily, monthly }, payments: (payments.data ?? []).reduce((sum, row) => sum + Number(row.amount), 0), profit, products: [...products.values()].sort((a, b) => b.sales - a.sales), customers: [...customers.values()].sort((a, b) => b.sales - a.sales), suppliers: [...suppliers.values()].sort((a, b) => b.cost - a.cost), critical };
+  return { error, sales: { daily, monthly }, payments: (payments.data ?? []).filter((row) => row.status !== "İptal").reduce((sum, row) => sum + Number(row.amount), 0), profit: grossProfit, netProfit, products: [...products.values()].sort((a, b) => b.sales - a.sales), customers: [...customers.values()].sort((a, b) => b.sales - a.sales), suppliers: [...suppliers.values()].sort((a, b) => b.cost - a.cost), critical };
 }
 
 export async function getCurrentProfile() {

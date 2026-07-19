@@ -6,11 +6,11 @@ import { useActionState, useState, type MouseEvent } from "react";
 import { ArrowLeft, MoreHorizontal, Printer, SlidersHorizontal } from "lucide-react";
 import { ConfirmDialog, type ConfirmConfig } from "@/components";
 
-type Product = { id?: string; name?: string; sku?: string; cost?: number; price?: number; sort_order?: number; product_prices?: { customer_id: string; price: number }[]; suppliers?: { name?: string } | { name?: string }[] | null };
+type Product = { id?: string; name?: string; sku?: string; cost?: number; average_cost?: number; price?: number; sort_order?: number; product_prices?: { customer_id: string; price: number }[]; suppliers?: { name?: string } | { name?: string }[] | null };
 type Order = {
-  id: string; order_no: string; status: string; note: string; discount: number; manual_total: number | null; created_at: string;
+  id: string; order_no: string; status: string; note: string; discount: number; shipping_cost?: number; other_costs?: number; manual_total: number | null; created_at: string;
   customers: { name?: string } | { name?: string }[] | null; customer_id: string;
-  order_items: { id: string; qty: number; price: number; products: Product | Product[] | null }[];
+  order_items: { id: string; qty: number; price: number; available_at_order?: number; fulfillment_source?: string; warehouse_qty?: number; supplier_qty?: number; reserved_qty?: number; unit_cost?: number; net_profit?: number; products: Product | Product[] | null }[];
 };
 type Action = (formData: FormData) => void | Promise<void>;
 type State = { ok: boolean; message: string } | null;
@@ -20,18 +20,31 @@ const pipelineStatuses = ["Yeni Sipariş", "Onaylandı", "Hazırlanıyor", "Teda
 const statusClasses: Record<string, string> = { "Yeni Sipariş": "st-new", "Onaylandı": "st-approved", "Hazırlanıyor": "st-prep", "Tedarikçiye İletildi": "st-supplier", "Hazır": "st-ready", "Teslim Edildi": "st-delivered", "Tamamlandı": "st-done", "İptal Edildi": "st-cancel" };
 
 const ALL_SUPPLIERS = "__all__";
+const fulfillmentSources = ["Kendi depo", "Tedarikçi", "Depo + tedarikçi", "Başka depo"];
 
 function first<T>(value: T | T[] | null): T | undefined { return Array.isArray(value) ? value[0] : value ?? undefined; }
 
-function OrderItemRow({ orderId, item, updateAction, deleteAction }: { orderId: string; item: Order["order_items"][number]; updateAction: Action; deleteAction: Action }) {
+function sourceClass(source: string) {
+  if (source === "Kendi depo") return "own";
+  if (source === "Depo + tedarikçi") return "split";
+  if (source === "Başka depo") return "other";
+  return "supplier";
+}
+
+function OrderItemRow({ orderId, item, updateAction, fulfillmentAction, deleteAction }: { orderId: string; item: Order["order_items"][number]; updateAction: Action; fulfillmentAction: Action; deleteAction: Action }) {
   const product = first(item.products);
   const [editing, setEditing] = useState(false);
   const [deleteMode, setDeleteMode] = useState(false);
   const [qty, setQty] = useState(String(item.qty));
   const [price, setPrice] = useState(String(item.price));
   const [deletePassword, setDeletePassword] = useState("");
+  const [source, setSource] = useState(item.fulfillment_source ?? "Tedarikçi");
+  const [warehouseQty, setWarehouseQty] = useState(String(item.warehouse_qty ?? 0));
+  const [supplierQty, setSupplierQty] = useState(String(item.supplier_qty ?? item.qty));
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const unitCost = Number(item.unit_cost ?? product?.average_cost ?? product?.cost ?? 0);
+  const productProfit = Number(item.qty) * (Number(item.price) - unitCost);
 
   function startEdit() { setQty(String(item.qty)); setPrice(String(item.price)); setError(""); setDeleteMode(false); setEditing(true); }
   function cancel() { setEditing(false); setDeleteMode(false); setError(""); }
@@ -42,6 +55,14 @@ function OrderItemRow({ orderId, item, updateAction, deleteAction }: { orderId: 
     setPending(true); setError("");
     const data = new FormData(); data.set("id", item.id); data.set("order_id", orderId); data.set("qty", String(qtyNum)); data.set("price", String(priceNum));
     try { await updateAction(data); setEditing(false); } catch (err) { setError(err instanceof Error ? err.message : "Güncellenemedi."); } finally { setPending(false); }
+  }
+  async function saveFulfillment() {
+    const own = Number(warehouseQty); const supplier = Number(supplierQty);
+    if (!Number.isFinite(own) || own < 0 || !Number.isFinite(supplier) || supplier < 0) { setError("Karşılama miktarları geçerli değil."); return; }
+    if (Math.abs(own + supplier - Number(item.qty)) > 0.0001) { setError("Depo ve tedarikçi miktarı sipariş miktarına eşit olmalı."); return; }
+    setPending(true); setError("");
+    const data = new FormData(); data.set("id", item.id); data.set("order_id", orderId); data.set("fulfillment_source", source); data.set("warehouse_qty", String(own)); data.set("supplier_qty", String(supplier)); data.set("available_at_order", String(item.available_at_order ?? 0));
+    try { await fulfillmentAction(data); } catch (err) { setError(err instanceof Error ? err.message : "Karşılama güncellenemedi."); } finally { setPending(false); }
   }
   async function confirmDelete() {
     if (!deletePassword) { setError("Onay için şifrenizi girin."); return; }
@@ -54,16 +75,34 @@ function OrderItemRow({ orderId, item, updateAction, deleteAction }: { orderId: 
   if (!editing) {
     return <tr>{identity}
       <td className="num">{item.qty}</td>
-      <td className="num">₺{Number(product?.cost ?? 0).toFixed(2)}</td>
+      <td className="num">{Number(item.available_at_order ?? 0)}</td>
+      <td><div className="fulfillment-cell">
+        <span className={`fulfillment-source ${sourceClass(item.fulfillment_source ?? "Tedarikçi")}`}>{item.fulfillment_source ?? "Tedarikçi"}</span>
+        <span className="fulfillment-metrics">
+          <span><b>{Number(item.warehouse_qty ?? 0)}</b><small>Depo</small></span>
+          <span><b>{Number(item.supplier_qty ?? 0)}</b><small>Tedarikçi</small></span>
+          <span><b>{Number(item.reserved_qty ?? 0)}</b><small>Rezerve</small></span>
+        </span>
+      </div></td>
+      <td className="num">₺{unitCost.toFixed(2)}</td>
       <td className="num">₺{Number(item.price).toFixed(2)}</td>
+      <td className={`num ${productProfit < 0 ? "danger-text" : ""}`}>₺{productProfit.toFixed(2)}</td>
       <td className="num"><b>₺{(Number(item.qty) * Number(item.price)).toFixed(2)}</b></td>
       <td className="order-items-action-col"><button type="button" className="btn btn-ghost btn-sm" onClick={startEdit}>Düzenle</button></td>
     </tr>;
   }
   return <tr className="order-item-editing">{identity}
     <td className="num"><input className="input order-item-input" type="number" min="0.01" step="0.01" value={qty} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setQty(event.target.value)} aria-label="Adet" disabled={deleteMode} /></td>
-    <td className="num">₺{Number(product?.cost ?? 0).toFixed(2)}</td>
+    <td className="num">{Number(item.available_at_order ?? 0)}</td>
+    <td><div className="fulfillment-edit">
+      <select className="input" value={source} onChange={(event) => setSource(event.target.value)} disabled={deleteMode}>{fulfillmentSources.map((option) => <option key={option}>{option}</option>)}</select>
+      <input className="input order-item-input" type="number" min="0" step="0.01" value={warehouseQty} onChange={(event) => setWarehouseQty(event.target.value)} aria-label="Depodan karşılanacak miktar" disabled={deleteMode} />
+      <input className="input order-item-input" type="number" min="0" step="0.01" value={supplierQty} onChange={(event) => setSupplierQty(event.target.value)} aria-label="Tedarikçiden karşılanacak miktar" disabled={deleteMode} />
+      <button type="button" className="btn btn-ghost btn-sm" onClick={saveFulfillment} disabled={pending || deleteMode}>Kaynak</button>
+    </div></td>
+    <td className="num">₺{unitCost.toFixed(2)}</td>
     <td className="num"><input className="input order-item-input" type="number" min="0" step="0.01" value={price} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setPrice(event.target.value)} aria-label="Birim satış" disabled={deleteMode} /></td>
+    <td className={`num ${productProfit < 0 ? "danger-text" : ""}`}>₺{productProfit.toFixed(2)}</td>
     <td className="num"><b>₺{(Number(qty || 0) * Number(price || 0)).toFixed(2)}</b></td>
     <td className="order-items-action-col"><div className="order-item-edit-actions">
       {deleteMode ? <>
@@ -110,6 +149,8 @@ function OrderMetaForm({ order, action, manualAction }: { order: Order; action: 
   return <><form className="order-meta-form" action={formAction}>
     <input type="hidden" name="id" value={order.id} />
     <label>İndirim (₺)<input className="input" name="discount" type="number" min="0" step="0.01" defaultValue={order.discount ?? 0} /></label>
+    <label>Nakliye (₺)<input className="input" name="shipping_cost" type="number" min="0" step="0.01" defaultValue={order.shipping_cost ?? 0} /></label>
+    <label>Diğer masraf (₺)<input className="input" name="other_costs" type="number" min="0" step="0.01" defaultValue={order.other_costs ?? 0} /></label>
     <label>Sipariş notu<textarea className="input" name="note" rows={2} defaultValue={order.note ?? ""} placeholder="Sipariş için not ekleyin" /></label>
     <button className="btn btn-ghost" type="submit" disabled={pending}>{pending ? "Kaydediliyor…" : "Bilgileri kaydet"}</button>
     {state && <span className={state.ok ? "form-success" : "form-error"}>{state.message}</span>}
@@ -147,7 +188,7 @@ function SupplierPrint({ order, customerName, groups, target, brandName }: { ord
   </div>;
 }
 
-export default function OrderDetailView({ order, products, brandName, updateAction, updateDetailsAction, updateManualTotalAction, copyAction, updateItemAction, addItemAction, deleteItemAction, deleteAction }: { order: Order; products: Product[]; brandName: string; updateAction: Action; updateDetailsAction: Action; updateManualTotalAction: Action; copyAction: Action; updateItemAction: Action; addItemAction: Action; deleteItemAction: Action; deleteAction: Action }) {
+export default function OrderDetailView({ order, products, brandName, updateAction, updateDetailsAction, updateManualTotalAction, copyAction, updateItemAction, updateFulfillmentAction, addItemAction, deleteItemAction, deleteAction }: { order: Order; products: Product[]; brandName: string; updateAction: Action; updateDetailsAction: Action; updateManualTotalAction: Action; copyAction: Action; updateItemAction: Action; updateFulfillmentAction: Action; addItemAction: Action; deleteItemAction: Action; deleteAction: Action }) {
   const router = useRouter();
   const customerName = first(order.customers)?.name ?? "—";
   const cancelled = order.status === "İptal Edildi";
@@ -162,13 +203,22 @@ export default function OrderDetailView({ order, products, brandName, updateActi
   const subtotal = order.order_items.reduce((sum, item) => sum + Number(item.qty) * Number(item.price), 0);
   const discount = Number(order.discount ?? 0);
   const total = order.manual_total ?? subtotal - discount;
+  const grossProfit = order.order_items.reduce((sum, item) => {
+    const product = first(item.products);
+    const unitCost = Number(item.unit_cost ?? product?.average_cost ?? product?.cost ?? 0);
+    return sum + Number(item.qty) * (Number(item.price) - unitCost);
+  }, 0);
+  const netProfit = grossProfit - discount - Number(order.shipping_cost ?? 0) - Number(order.other_costs ?? 0);
 
   const supplierGroups = new Map<string, SupplierRow[]>();
   order.order_items.forEach((item) => {
     const product = first(item.products);
     const supplierName = first(product?.suppliers ?? null)?.name ?? "Tedarikçi belirtilmemiş";
     const rows = supplierGroups.get(supplierName) ?? [];
-    rows.push({ name: product?.name ?? "Ürün", qty: Number(item.qty), total: Number(item.qty) * Number(product?.cost ?? 0), sort_order: Number(product?.sort_order ?? Number.MAX_SAFE_INTEGER) });
+    const supplierQty = Number(item.supplier_qty ?? item.qty);
+    if (supplierQty <= 0) return;
+    const unitCost = Number(item.unit_cost ?? product?.average_cost ?? product?.cost ?? 0);
+    rows.push({ name: product?.name ?? "Ürün", qty: supplierQty, total: supplierQty * unitCost, sort_order: Number(product?.sort_order ?? Number.MAX_SAFE_INTEGER) });
     supplierGroups.set(supplierName, rows);
   });
   for (const rows of supplierGroups.values()) rows.sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name, "tr"));
@@ -181,7 +231,8 @@ export default function OrderDetailView({ order, products, brandName, updateActi
   }
   function changeStatus(status: string) {
     if (statusPending || status === order.status) return;
-    if (status === "Tamamlandı") { setConfirmConfig({ title: "Siparişi tamamla", message: "Sipariş “Tamamlandı” olarak işaretlenecek ve ürünler stoktan otomatik düşülecek.", confirmLabel: "Tamamla", onConfirm: async () => { await applyStatus("Tamamlandı"); } }); return; }
+    if (status === "Onaylandı") { setConfirmConfig({ title: "Siparişi onayla", message: "Sipariş onaylanacak ve depodan karşılanacak ürünler rezerve stok olarak ayrılacak.", confirmLabel: "Onayla", onConfirm: async () => { await applyStatus("Onaylandı"); } }); return; }
+    if (["Teslim Edildi", "Tamamlandı"].includes(status)) { setConfirmConfig({ title: "Siparişi kapat", message: "Rezerve ürünler fiziksel stoktan düşülecek.", confirmLabel: "Stoktan düş", onConfirm: async () => { await applyStatus(status); } }); return; }
     void applyStatus(status);
   }
 
@@ -198,7 +249,7 @@ export default function OrderDetailView({ order, products, brandName, updateActi
   }
   function handleDelete(event: MouseEvent<HTMLButtonElement>) {
     closeMenu(event);
-    setConfirmConfig({ title: "Siparişi sil", message: "Bu sipariş ve tüm işlem geçmişi kalıcı olarak silinecek. Bu işlem geri alınamaz.", confirmLabel: "Kalıcı olarak sil", danger: true, needsPassword: true, onConfirm: async (password) => { const data = new FormData(); data.set("id", order.id); data.set("current_password", password); await deleteAction(data); router.push("/panel/siparisler"); } });
+    setConfirmConfig({ title: "Siparişi pasife al", message: "İşlem görmüş sipariş kalıcı silinmeyecek, iptal durumuna alınacak ve geçmişte korunacak.", confirmLabel: "İptal durumuna al", danger: true, needsPassword: true, onConfirm: async (password) => { const data = new FormData(); data.set("id", order.id); data.set("current_password", password); await deleteAction(data); router.push("/panel/siparisler"); } });
   }
 
   return <section className="order-page">
@@ -242,13 +293,15 @@ export default function OrderDetailView({ order, products, brandName, updateActi
     {infoOpen && <div className="order-info-panel"><div className="order-info-title">Sipariş bilgileri</div><OrderMetaForm order={order} action={withRefresh(updateDetailsAction)} manualAction={withRefresh(updateManualTotalAction)} /></div>}
 
     <div className="card"><div className="tbl-wrap"><table className="tbl order-items-table">
-      <thead><tr><th>Ürün</th><th className="num">Adet</th><th className="num">Geliş</th><th className="num">Birim Satış</th><th className="num">Toplam</th><th className="order-items-action-col"></th></tr></thead>
-      <tbody>{order.order_items.map((item) => <OrderItemRow key={item.id} orderId={order.id} item={item} updateAction={withRefresh(updateItemAction)} deleteAction={withRefresh(deleteItemAction)} />)}</tbody>
+      <thead><tr><th>Ürün</th><th className="num">Sipariş</th><th className="num">Satılabilir</th><th>Karşılama</th><th className="num">Alış maliyeti</th><th className="num">Satış fiyatı</th><th className="num">Ürün kârı</th><th className="num">Toplam</th><th className="order-items-action-col"></th></tr></thead>
+      <tbody>{order.order_items.map((item) => <OrderItemRow key={item.id} orderId={order.id} item={item} updateAction={withRefresh(updateItemAction)} fulfillmentAction={withRefresh(updateFulfillmentAction)} deleteAction={withRefresh(deleteItemAction)} />)}</tbody>
       <tfoot>
-        <tr><th colSpan={4} className="num">Ara toplam</th><th className="num">₺{subtotal.toFixed(2)}</th><th /></tr>
-        {discount > 0 && <tr><th colSpan={4} className="num">İndirim</th><th className="num">−₺{discount.toFixed(2)}</th><th /></tr>}
-        {order.manual_total != null && <tr><th colSpan={4} className="num">Manuel toplam</th><th className="num">₺{Number(order.manual_total).toFixed(2)}</th><th /></tr>}
-        <tr className="order-grandtotal"><th colSpan={4} className="num">Genel Toplam</th><th className="num">₺{total.toFixed(2)}</th><th /></tr>
+        <tr><th colSpan={7} className="num">Ara toplam</th><th className="num">₺{subtotal.toFixed(2)}</th><th /></tr>
+        {discount > 0 && <tr><th colSpan={7} className="num">İndirim</th><th className="num">−₺{discount.toFixed(2)}</th><th /></tr>}
+        {order.manual_total != null && <tr><th colSpan={7} className="num">Manuel toplam</th><th className="num">₺{Number(order.manual_total).toFixed(2)}</th><th /></tr>}
+        <tr><th colSpan={7} className="num">Brüt kâr</th><th className={`num ${grossProfit < 0 ? "danger-text" : ""}`}>₺{grossProfit.toFixed(2)}</th><th /></tr>
+        <tr><th colSpan={7} className="num">Net kâr</th><th className={`num ${netProfit < 0 ? "danger-text" : ""}`}>₺{netProfit.toFixed(2)}</th><th /></tr>
+        <tr className="order-grandtotal"><th colSpan={7} className="num">Genel Toplam</th><th className="num">₺{total.toFixed(2)}</th><th /></tr>
       </tfoot>
     </table></div></div>
 

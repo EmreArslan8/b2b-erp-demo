@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "../../../lib/supabase/server";
+import { writeAuditLog } from "../../../lib/supabase/audit";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -73,6 +74,7 @@ export async function createProduct(formData: FormData) {
   await saveProductImage(supabase, created?.id, formData.get("image"));
   await saveCustomerPrices(supabase, created?.id, formData);
   if (created?.id) await supabase.from("cost_history").insert({ product_id: created.id, cost: Number(formData.get("cost") ?? 0) });
+  await writeAuditLog(supabase, "product", created?.id ?? null, "create", { sku: String(formData.get("sku") ?? "").trim() });
   revalidatePath("/panel/urunler");
 }
 
@@ -99,6 +101,7 @@ export async function importProducts(formData: FormData) {
     const product = await supabase.from("products").upsert({ name, sku, barcode: column(values, ["barkod", "barcode"]), ...category, brand: column(values, ["marka", "brand"]), unit: column(values, ["birim", "unit"]) || "Adet", cost: Number.isFinite(cost) ? cost : 0, price: Number.isFinite(price) ? price : 0, critical_level: Number(column(values, ["kritik stok", "critical_level"]) || 0) || 0 }, { onConflict: "sku" }).select("id").single();
     if (product.error || !product.data) throw new Error(product.error?.message ?? `${sku} ürünü içe aktarılamadı.`);
     await supabase.from("cost_history").insert({ product_id: product.data.id, cost: Number.isFinite(cost) ? cost : 0 });
+    await writeAuditLog(supabase, "product", product.data.id, "import_upsert", { sku, cost: Number.isFinite(cost) ? cost : 0 });
   }
   revalidatePath("/panel/urunler");
   revalidatePath("/siparis/[slug]", "page");
@@ -111,15 +114,26 @@ export async function toggleProductActive(formData: FormData) {
   if (!id) throw new Error("Ürün bulunamadı.");
   const { error } = await supabase.from("products").update({ active, updated_at: new Date().toISOString() }).eq("id", id);
   if (error) throw new Error(error.message);
+  await writeAuditLog(supabase, "product", id, active ? "reactivate" : "deactivate", {});
   revalidatePath("/panel/urunler");
   revalidatePath("/siparis/[slug]", "page");
 }
 
 export async function deleteProduct(formData: FormData) {
   const supabase = await createClient();
+  const id = String(formData.get("id"));
   await verifyPassword(supabase, String(formData.get("current_password") ?? ""));
-  const { error } = await supabase.from("products").delete().eq("id", String(formData.get("id")));
-  if (error) throw new Error(error.message);
+  const [orders, movements, stock] = await Promise.all([
+    supabase.from("order_items").select("id", { count: "exact", head: true }).eq("product_id", id),
+    supabase.from("stock_movements").select("id", { count: "exact", head: true }).eq("product_id", id),
+    supabase.from("product_stock").select("product_id", { count: "exact", head: true }).eq("product_id", id).gt("quantity", 0),
+  ]);
+  const readError = orders.error?.message ?? movements.error?.message ?? stock.error?.message;
+  if (readError) throw new Error(readError);
+  const hasHistory = (orders.count ?? 0) > 0 || (movements.count ?? 0) > 0 || (stock.count ?? 0) > 0;
+  const result = hasHistory ? await supabase.from("products").update({ active: false, updated_at: new Date().toISOString() }).eq("id", id) : await supabase.from("products").delete().eq("id", id);
+  if (result.error) throw new Error(result.error.message);
+  await writeAuditLog(supabase, "product", id, hasHistory ? "soft_delete" : "delete", { hasHistory });
   revalidatePath("/panel/urunler");
 }
 
@@ -137,6 +151,7 @@ export async function saveProductOrder(formData: FormData) {
     const { error } = await supabase.from("products").update({ sort_order: position }).eq("id", id);
     if (error) throw new Error(error.message);
   }
+  await writeAuditLog(supabase, "product", null, "reorder", { count: ids.length });
   revalidatePath("/panel/urunler");
   revalidatePath("/siparis/[slug]", "page");
 }
@@ -172,6 +187,7 @@ export async function updateProduct(formData: FormData) {
   await saveProductImage(supabase, id, formData.get("image"));
   await saveCustomerPrices(supabase, id, formData);
   if (Number(previous.data.cost) !== cost) await supabase.from("cost_history").insert({ product_id: id, cost });
+  await writeAuditLog(supabase, "product", id, "update", { costChanged: Number(previous.data.cost) !== cost });
   revalidatePath("/panel/urunler");
 }
 
