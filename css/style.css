@@ -490,8 +490,29 @@ details > summary.btn { display: inline-flex; cursor: pointer; user-select: none
 .order-info-title { margin-bottom: 10px; color: var(--ink-3); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
 
 /* Ürün tablosu */
-.order-items-table { font-size: 13px; }
-.order-items-table .order-items-action-col { width: 84px; text-align: right; }
+.order-items-table { table-layout: fixed; font-size: 12px; }
+.order-items-table th {
+  padding: 8px 6px;
+  font-size: 9.5px;
+  line-height: 1.15;
+  letter-spacing: .045em;
+  white-space: normal;
+  vertical-align: bottom;
+}
+.order-items-table td { padding: 9px 6px; }
+.order-items-table th:nth-child(1), .order-items-table td:nth-child(1) { width: 16%; }
+.order-items-table th:nth-child(2), .order-items-table td:nth-child(2) { width: 8%; }
+.order-items-table th:nth-child(3), .order-items-table td:nth-child(3) { width: 10%; }
+.order-items-table th:nth-child(4), .order-items-table td:nth-child(4) { width: 12%; }
+.order-items-table th:nth-child(5), .order-items-table td:nth-child(5) { width: 10%; }
+.order-items-table th:nth-child(6), .order-items-table td:nth-child(6) { width: 11%; }
+.order-items-table th:nth-child(7), .order-items-table td:nth-child(7) { width: 8%; }
+.order-items-table th:nth-child(8), .order-items-table td:nth-child(8) { width: 8%; }
+.order-items-table th:nth-child(9), .order-items-table td:nth-child(9) { width: 8%; }
+.order-items-table th:nth-child(10), .order-items-table td:nth-child(10) { width: 8%; }
+.order-items-table th:nth-child(11), .order-items-table td:nth-child(11) { width: 7%; }
+.order-items-table .order-items-action-col { text-align: right; }
+.order-items-table td:first-child b { overflow-wrap: anywhere; }
 .order-items-table tfoot th { background: transparent; font-weight: 600; color: var(--ink-2); padding-top: 6px; padding-bottom: 6px; border: 0; }
 .order-items-table tfoot .order-grandtotal th { font-size: 15px; font-weight: 800; color: var(--ink); border-top: 2px solid var(--line-2); padding-top: 10px; }
 .fulfillment-cell { display: grid; gap: 7px; min-width: 198px; }
@@ -528,6 +549,8 @@ details > summary.btn { display: inline-flex; cursor: pointer; user-select: none
 .fulfillment-edit { display: grid; grid-template-columns: minmax(138px, 1fr) 72px 72px auto; align-items: center; gap: 5px; min-width: 340px; }
 .fulfillment-edit .input { min-width: 0; }
 .fulfillment-edit .order-item-input { max-width: none; padding-inline: 7px; }
+.fulfillment-edit-qty { display: grid; grid-template-columns: minmax(62px, 1fr) auto; align-items: center; gap: 5px; min-width: 138px; }
+.fulfillment-edit-qty .order-item-input { max-width: none; }
 .order-detail-title { display: block; margin-bottom: 12px; color: var(--ink-3); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
 .order-items { display: grid; }
 .order-item { display: grid; grid-template-columns: minmax(0, 1fr) minmax(170px, auto); align-items: center; gap: 20px; min-height: 82px; padding: 13px 0; border-bottom: 1px solid var(--line-2); }

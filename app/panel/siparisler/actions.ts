@@ -12,6 +12,16 @@ async function planFulfillment(supabase: Awaited<ReturnType<typeof createClient>
   if (result.error && !/function .*plan_order_fulfillment|schema cache/i.test(result.error.message)) throw new Error(result.error.message);
 }
 
+function orderStatusError(message: string) {
+  if (/function .*reserve_order_stock|function .*ship_order_stock|function .*release_order_reservations|schema cache|Could not find/i.test(message)) {
+    return "Veritabanı güncellemesi eksik görünüyor. Supabase SQL Editor’da supabase/patches/020_internal_stock_fulfillment.sql dosyasını tekrar çalıştırın.";
+  }
+  if (/Satılabilir stok rezervasyon için yetersiz|Fiziksel stok satış çıkışı için yetersiz/i.test(message)) {
+    return `${message} Stok ekranından fiziksel/rezerve stokları kontrol edin.`;
+  }
+  return message;
+}
+
 async function assertCanModifyOrder(supabase: Awaited<ReturnType<typeof createClient>>, orderId: string) {
   const order = await supabase.from("orders").select("status").eq("id", orderId).maybeSingle();
   if (order.error || !order.data) throw new Error(order.error?.message ?? "Sipariş bulunamadı.");
@@ -38,17 +48,17 @@ export async function updateOrderStatus(formData: FormData) {
   if (["Teslim Edildi", "Tamamlandı"].includes(current.data.status) && current.data.status !== status) await assertCanModifyOrder(supabase, id);
   if (status === "Onaylandı" && current.data.status !== "Onaylandı") {
     const reserved = await supabase.rpc("reserve_order_stock", { p_order_id: id });
-    if (reserved.error) throw new Error(reserved.error.message);
+    if (reserved.error) throw new Error(orderStatusError(reserved.error.message));
   }
   if (["Teslim Edildi", "Tamamlandı"].includes(status) && !["Teslim Edildi", "Tamamlandı"].includes(current.data.status)) {
     const reserved = await supabase.rpc("reserve_order_stock", { p_order_id: id });
-    if (reserved.error) throw new Error(reserved.error.message);
+    if (reserved.error) throw new Error(orderStatusError(reserved.error.message));
     const shipped = await supabase.rpc("ship_order_stock", { p_order_id: id });
-    if (shipped.error) throw new Error(shipped.error.message);
+    if (shipped.error) throw new Error(orderStatusError(shipped.error.message));
   }
   if (status === "İptal Edildi" && current.data.status !== "İptal Edildi") {
     const released = await supabase.rpc("release_order_reservations", { p_order_id: id });
-    if (released.error) throw new Error(released.error.message);
+    if (released.error) throw new Error(orderStatusError(released.error.message));
   }
   const { error } = await supabase.from("orders").update({ status, updated_at: new Date().toISOString() }).eq("id", id);
   if (error) throw new Error(error.message);
